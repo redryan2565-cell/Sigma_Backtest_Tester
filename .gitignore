@@ -1,4 +1,6 @@
+# -------------------------------
 # Python
+# -------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -8,28 +10,40 @@ __pycache__/
 dist/
 build/
 
+# -------------------------------
 # Virtual environments
+# -------------------------------
 .venv/
 venv/
 ENV/
 env/
 
-# IDE
+# -------------------------------
+# IDE / Editor
+# -------------------------------
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.codex/
 
-# Project specific
+# -------------------------------
+# Project-specific
+# -------------------------------
+# CSV / 이미지 / 데이터
 *.csv
 *.png
 *.jpg
 *.jpeg
-auth.json
-.env
 
-# OS
+# 비밀 환경변수 / API / 인증키 파일
+.env
+auth.json
+.streamlit/secrets.toml
+
+# -------------------------------
+# OS / 시스템 파일
+# -------------------------------
 .DS_Store
 Thumbs.db
-
