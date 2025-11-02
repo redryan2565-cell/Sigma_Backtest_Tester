@@ -5,7 +5,40 @@ from typing import Iterable, Sequence
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import newton
+from typing import Callable
+
+
+def _secant_root(
+    func: Callable[[float], float],
+    x0: float = 0.1,
+    x1: float | None = None,
+    tol: float = 1e-7,
+    maxiter: int = 100,
+) -> float:
+    """Solve func(x)=0 using a secant-like iteration.
+
+    Returns the final iterate; the caller should validate convergence.
+    """
+
+    if x1 is None:
+        x1 = x0 + 0.05 if x0 != 0 else 0.1
+
+    f0 = func(x0)
+    f1 = func(x1)
+
+    for _ in range(maxiter):
+        denom = f1 - f0
+        if abs(denom) < 1e-12:
+            break
+        x2 = x1 - f1 * (x1 - x0) / denom
+        if not np.isfinite(x2):
+            break
+        if abs(x2 - x1) < tol:
+            return float(x2)
+        x0, f0 = x1, f1
+        x1, f1 = x2, func(x2)
+
+    return float(x1)
 
 
 def max_drawdown(series: pd.Series) -> float:
@@ -76,12 +109,22 @@ def xirr(cash_flows: Sequence[float], dates: Sequence[datetime]) -> float:
     amounts = np.array(cash_flows, dtype=float)
 
     def npv(rate: float) -> float:
-        return float(np.sum(amounts / (1.0 + rate) ** years))
+        if rate <= -0.999999:
+            return np.inf
+        denom = (1.0 + rate) ** years
+        return float(np.sum(amounts / denom))
 
     try:
-        irr = newton(lambda r: npv(r), x0=0.1, tol=1e-7, maxiter=100)
-    except Exception:  # pragma: no cover - rare convergence issues
+        irr = _secant_root(npv)
+    except Exception:  # pragma: no cover - defensive fallback
         return 0.0
+
+    if not np.isfinite(irr):
+        return 0.0
+
+    if abs(npv(irr)) > 1e-6:
+        return 0.0
+
     return float(irr)
 
 

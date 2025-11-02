@@ -75,7 +75,8 @@ def compute_ledger(
     
     Returns DataFrame with columns:
     DailyRet, Signal, Mode, AdjClose, PxExec, BuyAmt, Fee, SharesBought,
-    CashFlow, CumCashFlow, CumShares, Equity, NAV, CumInvested, Drawdown
+    CashFlow, CumCashFlow, CumShares, Equity, CashBalance, NAV,
+    CumInvested, Drawdown
     """
     idx = prices.index
     adj = prices["AdjClose"].astype(float)
@@ -121,12 +122,15 @@ def compute_ledger(
     cum_shares = shares_bought.cumsum()
     cum_cash_flow = cash_flow.cumsum()
     
-    # Equity and NAV
-    equity = cum_shares * adj
-    nav = equity + cum_cash_flow
-    
     # Cumulative invested (positive, monotone increasing)
     cum_invested = -np.minimum(cum_cash_flow, 0.0)
+
+    # Equity (mark-to-market) and residual cash balance
+    equity = cum_shares * adj
+    cash_balance = cum_invested + cum_cash_flow
+
+    # NAV represents total account value (equity + remaining cash)
+    nav = equity + cash_balance
     
     # Drawdown: only compute after first investment
     drawdown = pd.Series(np.nan, index=idx)
@@ -157,6 +161,7 @@ def compute_ledger(
         "CumCashFlow": cum_cash_flow,
         "CumShares": cum_shares,
         "Equity": equity,
+        "CashBalance": cash_balance,
         "NAV": nav,
         "CumInvested": cum_invested,
         "Drawdown": drawdown,
@@ -174,6 +179,7 @@ def _validate_ledger(ledger: pd.DataFrame) -> None:
     cum_cash_flow = ledger["CumCashFlow"]
     nav = ledger["NAV"]
     equity = ledger["Equity"]
+    cash_balance = ledger["CashBalance"]
     cum_invested = ledger["CumInvested"]
     drawdown = ledger["Drawdown"]
     
@@ -190,11 +196,17 @@ def _validate_ledger(ledger: pd.DataFrame) -> None:
     if not (cum_invested_diff >= -1e-10).all():
         raise ValueError("CumInvested must be non-decreasing")
     
-    # NAV == Equity + CumCashFlow
-    nav_computed = equity + cum_cash_flow
+    # Cash balance should equal invested capital plus cash flows
+    expected_cash_balance = cum_invested + cum_cash_flow
+    if not np.allclose(cash_balance, expected_cash_balance, rtol=1e-8, atol=1e-8):
+        max_diff = np.abs(cash_balance - expected_cash_balance).max()
+        raise ValueError(f"CashBalance mismatch; max diff: {max_diff}")
+
+    # NAV == Equity + CashBalance
+    nav_computed = equity + cash_balance
     if not np.allclose(nav, nav_computed, rtol=1e-8, atol=1e-8):
         max_diff = np.abs(nav - nav_computed).max()
-        raise ValueError(f"NAV must equal Equity + CumCashFlow; max diff: {max_diff}")
+        raise ValueError(f"NAV must equal Equity + CashBalance; max diff: {max_diff}")
     
     # Drawdown in valid range (ignore NaN)
     drawdown_valid = drawdown.dropna()
@@ -299,7 +311,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
         cf_values = list(cash_flows[nonzero_cf_mask].values)
         # Add terminal liquidation
         cf_dates.append(idx[-1].to_pydatetime())
-        cf_values.append(float(equity.iloc[-1]))
+        cf_values.append(float(nav.iloc[-1]))
         xirr_value = xirr(cf_values, cf_dates)
     else:
         xirr_value = 0.0
