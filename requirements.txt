@@ -1,0 +1,20 @@
+# Streamlit UI
+streamlit>=1.32.0
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Plotting / Visualization
+matplotlib>=3.8.0
+plotly>=5.20.0
+
+# Data & API
+requests>=2.31.0
+yfinance>=0.2.40
+
+# Backtesting / Quant
+ta>=0.11.0
+backtesting>=0.3.3
+
+# Utility / Dev
+tqdm>=4.66.0
+python-dotenv>=1.0.0

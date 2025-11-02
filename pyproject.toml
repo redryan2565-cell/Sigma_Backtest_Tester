@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "normal-dip-bt"
+version = "0.1.0"
+description = "Backtesting CLI for buying dips with weekly contribution budgeting"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "ndbt", email = "dev@example.com" }]
+dependencies = [
+  "pandas>=2.0.0",
+  "numpy>=1.24.0",
+  "yfinance>=0.2.12",
+  "typer>=0.12.0",
+  "pydantic>=2.5.0",
+  "pydantic-settings>=2.2.0",
+  "python-dotenv>=1.0.0",
+  "matplotlib>=3.7.0",
+  "scipy>=1.10.0",
+]
+
+[project.optional-dependencies]
+gui = [
+  "plotly>=5.18.0",
+  "streamlit-aggrid>=0.3.4",
+  "streamlit-option-menu>=0.3.12",
+  "altair>=5.2.0",
+]
+advanced = [
+  "pandas-ta>=0.3.14b",
+  "quantstats>=0.0.62",
+  "riskfolio-lib>=5.0.0",
+  "yfinance-cache>=0.1.5",
+]
+dev = [
+  "pytest>=7.4.0",
+  "black>=23.0.0",
+  "mypy>=1.5.0",
+  "loguru>=0.7.2",
+]
+all = [
+  "normal-dip-bt[gui,advanced,dev]",
+]
+
+[project.scripts]
+ndbt = "src.cli:app"
+
+[tool.setuptools]
+packages = ["src"]
+package-dir = {"src" = "src"}
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+
