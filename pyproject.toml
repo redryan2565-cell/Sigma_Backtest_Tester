@@ -55,7 +55,7 @@ package-dir = {"src" = "src"}
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["src/tests"]
-pythonpath = [".", "src"]
+pythonpath = ["."]
 
 [tool.black]
 line-length = 88
