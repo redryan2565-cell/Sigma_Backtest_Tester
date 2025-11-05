@@ -11,9 +11,14 @@ plotly>=5.20.0
 requests>=2.31.0
 yfinance>=0.2.40
 
-# Backtesting / Quant
-ta>=0.11.0
-backtesting>=0.3.3
+# CLI / Config
+typer>=0.12.0
+pydantic>=2.5.0
+pydantic-settings>=2.2.0
+
+# Streamlit UI Extensions
+streamlit-aggrid>=0.3.4
+streamlit-option-menu>=0.3.12
 
 # Utility / Dev
 tqdm>=4.66.0

@@ -183,7 +183,7 @@ def main() -> None:
                     help="Price slippage assumption (e.g., 0.0005 = 0.05%)"
                 )
             
-            run_btn = st.button("🚀 Run Backtest", type="primary", use_container_width=True)
+            run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
             
         else:  # Load CSV mode
             st.header("CSV Settings")
@@ -194,7 +194,7 @@ def main() -> None:
                 accept_multiple_files=False,
                 help="Upload a CSV file to view results"
             )
-            run_btn = st.button("📂 Load CSV", type="primary", use_container_width=True)
+            run_btn = st.button("📂 Load CSV", type="primary", width='stretch')
 
     if run_btn:
         if view_mode == "Load CSV":
@@ -262,7 +262,7 @@ def main() -> None:
                     height=500,
                     showlegend=False
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 nav_series.plot(ax=ax, linewidth=2, color='steelblue')
@@ -291,7 +291,7 @@ def main() -> None:
                     height=400,
                 )
             else:
-                st.dataframe(daily, use_container_width=True, height=400)
+                st.dataframe(daily, width='stretch', height=400)
             return
 
         # Run backtest path
@@ -431,7 +431,7 @@ def main() -> None:
                     height=500,
                     showlegend=False
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 daily["NAV"].plot(ax=ax, linewidth=2, color="steelblue")
@@ -468,7 +468,7 @@ def main() -> None:
                     template='plotly_white',
                     height=500
                 )
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 daily["Equity"].plot(ax=ax, label="Equity", linewidth=2, color="green")
@@ -507,7 +507,7 @@ def main() -> None:
                     showlegend=False
                 )
                 fig.add_hline(y=0, line_dash="dash", line_color="gray")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
             else:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 drawdown.plot(ax=ax, linewidth=2, color="red", kind="area", alpha=0.3)
@@ -552,7 +552,7 @@ def main() -> None:
             if grid_response['selected_rows']:
                 st.info(f"Selected: {grid_response['selected_rows'][0]}")
         else:
-            st.dataframe(daily, use_container_width=True, height=400)
+            st.dataframe(daily, width='stretch', height=400)
 
 
 if __name__ == "__main__":  # pragma: no cover
