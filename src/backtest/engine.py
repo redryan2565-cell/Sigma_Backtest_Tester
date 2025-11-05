@@ -7,8 +7,8 @@ from typing import Dict, Literal, Tuple
 import numpy as np
 import pandas as pd
 
-from ..backtest.metrics import cagr as cagr_func
-from ..backtest.metrics import max_drawdown, xirr
+from .metrics import cagr as cagr_func
+from .metrics import max_drawdown, xirr
 from ..strategy.dip_buy import (
     AllocationMode,
     allocate_shares_per_signal,
