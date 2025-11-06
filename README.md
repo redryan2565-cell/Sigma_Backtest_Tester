@@ -1,5 +1,7 @@
 # Normal Dip Backtest (yAOIL)
 
+[![CI](https://github.com/redryan2565-cell/pratice/actions/workflows/ci.yml/badge.svg)](https://github.com/redryan2565-cell/pratice/actions/workflows/ci.yml)
+
 백테스트 엔진 + Streamlit GUI를 활용한 딥 구매 전략 백테스트 도구.
 
 ## 주요 기능
