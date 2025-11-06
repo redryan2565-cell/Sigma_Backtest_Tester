@@ -5,7 +5,9 @@ from typing import Optional
 
 import pandas as pd
 
+from ..config import get_settings
 from .base import PriceFeed
+from .cache import DataCache, get_cache
 
 
 class YFinanceFeed(PriceFeed):
@@ -14,8 +16,18 @@ class YFinanceFeed(PriceFeed):
     Returns OHLCV with 'AdjClose' column.
     """
 
-    def __init__(self, session: Optional[object] = None) -> None:
+    def __init__(self, session: Optional[object] = None, cache: Optional[DataCache] = None) -> None:
         self._session = session
+        if cache is None:
+            # Use settings to configure cache
+            settings = get_settings()
+            self._cache = DataCache(
+                cache_dir=settings.cache_dir,
+                ttl_hours=settings.cache_ttl_hours,
+                enabled=settings.cache_enabled,
+            )
+        else:
+            self._cache = cache
 
     def get_daily(self, ticker: str, start: date, end: date) -> pd.DataFrame:
         # Validate inputs
@@ -23,6 +35,11 @@ class YFinanceFeed(PriceFeed):
             raise ValueError("Ticker symbol must be a non-empty string")
         if start > end:
             raise ValueError(f"Start date ({start}) must be <= end date ({end})")
+        
+        # Check cache first
+        cached_data = self._cache.get(ticker, start, end)
+        if cached_data is not None:
+            return cached_data
         
         try:
             import yfinance as yf
@@ -99,6 +116,9 @@ class YFinanceFeed(PriceFeed):
         out = out.loc[(out.index.date >= start) & (out.index.date <= end)]
         if out.empty:
             raise ValueError("No data after trimming to requested date range")
+
+        # Cache the result
+        self._cache.set(ticker, start, end, out)
 
         return out
 
