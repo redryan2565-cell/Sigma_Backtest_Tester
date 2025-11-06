@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import typer
 
 from .backtest.engine import BacktestParams, run_backtest
-from .data.yfin import YFinanceFeed
+from .data.providers.yfin import YFinanceFeed
 
 
 app = typer.Typer(help="normal-dip-bt CLI")
@@ -26,9 +26,7 @@ def run(
     start: str = typer.Option(..., help="Start date YYYY-MM-DD"),
     end: str = typer.Option(..., help="End date YYYY-MM-DD"),
     threshold: float = typer.Option(-0.041, help="Dip threshold (daily return)"),
-    weekly_budget: float = typer.Option(500.0, help="Weekly budget in currency"),
-    mode: str = typer.Option("split", help="Allocation mode: split | first_hit"),
-    carryover: bool = typer.Option(True, help="Carry unused weekly budget"),
+    shares_per_signal: float = typer.Option(10.0, help="Number of shares to buy per signal"),
     fee_rate: float = typer.Option(0.0005, help="Fee rate per trade"),
     slippage_rate: float = typer.Option(0.0005, help="Slippage rate applied to price"),
     plot: bool = typer.Option(False, help="Show NAV plot"),
@@ -52,9 +50,7 @@ def run(
 
     params = BacktestParams(
         threshold=float(threshold),
-        weekly_budget=float(weekly_budget),
-        mode="split" if mode == "split" else "first_hit",
-        carryover=bool(carryover),
+        shares_per_signal=float(shares_per_signal),
         fee_rate=float(fee_rate),
         slippage_rate=float(slippage_rate),
     )

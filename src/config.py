@@ -14,6 +14,7 @@ class Settings(BaseSettings):
         cache_enabled: Whether data caching is enabled. Defaults to True.
         cache_ttl_hours: Cache TTL in hours. Defaults to 24.
         cache_dir: Cache directory path. Defaults to .cache/ in project root.
+        debug_mode: Whether to show detailed error messages. Defaults to False (production mode).
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     cache_enabled: bool = Field(default=True, alias="CACHE_ENABLED")
     cache_ttl_hours: int = Field(default=24, alias="CACHE_TTL_HOURS")
     cache_dir: Path | None = Field(default=None, alias="CACHE_DIR")
+    debug_mode: bool = Field(default=False, alias="DEBUG_MODE")
 
 
 def get_settings() -> Settings:

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+
+# Developer mode flag (for local development only)
+# Set DEVELOPER_MODE=true in .env or environment variables to enable Optimization/Leverage Mode
+DEVELOPER_MODE = os.getenv("DEVELOPER_MODE", "false").lower() == "true"
 
 # Optional imports for enhanced features
 try:
@@ -35,9 +40,10 @@ if Path(__file__).parent.parent.parent.exists():
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.backtest.engine import BacktestParams, run_backtest
-from src.data.yfin import YFinanceFeed
+from src.config import get_settings
+from src.data.providers.yfin import YFinanceFeed
 try:
-    from src.optimization.grid_search import generate_param_space, run_search
+    from src.optimization.grid_search import generate_param_space, generate_leverage_param_space, run_search
     OPTIMIZATION_AVAILABLE = True
 except ImportError as e:
     OPTIMIZATION_AVAILABLE = False
@@ -66,12 +72,25 @@ except ImportError as e:
 def main() -> None:
     st.set_page_config(page_title="normal-dip-bt", layout="wide", page_icon="📈")
     
-    # Navigation menu
+    # Get settings for security configuration
+    settings = get_settings()
+    debug_mode = settings.debug_mode
+    
+    # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
     if OPTION_MENU_AVAILABLE:
+        if DEVELOPER_MODE:
+            # Developer mode: show all tabs
+            options = ["📊 Backtest", "🔍 Optimization", "⚡ Leverage Mode", "📁 Load CSV", "ℹ️ About"]
+            icons = ["graph-up", "search", "zap", "folder", "info-circle"]
+        else:
+            # Deployment mode: hide Optimization and Leverage Mode
+            options = ["📊 Backtest", "📁 Load CSV", "ℹ️ About"]
+            icons = ["graph-up", "folder", "info-circle"]
+        
         selected = option_menu(
             menu_title=None,
-            options=["📊 Backtest", "🔍 Optimization", "📁 Load CSV", "ℹ️ About"],
-            icons=["graph-up", "search", "folder", "info-circle"],
+            options=options,
+            icons=icons,
             menu_icon="cast",
             default_index=0,
             orientation="horizontal",
@@ -79,22 +98,21 @@ def main() -> None:
         view_mode = (
             "Run Backtest" if selected == "📊 Backtest"
             else "Optimization" if selected == "🔍 Optimization"
+            else "Leverage Mode" if selected == "⚡ Leverage Mode"
             else "Load CSV" if selected == "📁 Load CSV"
             else "About"
         )
     else:
         st.title("📈 Normal Dip Backtest")
-        view_mode = st.radio("Mode", options=["Run Backtest", "Optimization", "Load CSV", "About"], horizontal=True)
+        if DEVELOPER_MODE:
+            view_mode = st.radio("Mode", options=["Run Backtest", "Optimization", "Leverage Mode", "Load CSV", "About"], horizontal=True)
+        else:
+            view_mode = st.radio("Mode", options=["Run Backtest", "Load CSV", "About"], horizontal=True)
 
     # About page
     if view_mode == "About":
         st.header("📖 About Normal Dip Backtest")
         st.markdown("""
-        ### Budget-based Mode
-        - Set a weekly budget amount
-        - Choose allocation mode (split or first_hit)
-        - Enable/disable carryover of unused budget
-        
         ### Shares-based Mode
         - Enter number of shares to buy per signal
         - Each signal day will buy the specified number of shares at market price
@@ -103,6 +121,7 @@ def main() -> None:
         - **Ticker**: Stock symbol (e.g., TQQQ, AAPL)
         - **Date Range**: Start and end dates for backtest
         - **Threshold**: Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1%)
+        - **Shares per Signal**: Number of shares to buy each time a dip signal occurs
         - **Fee Rate**: Trading fee per transaction
         - **Slippage Rate**: Price impact assumption
         """)
@@ -118,8 +137,12 @@ def main() -> None:
         
         return
 
-    # Optimization page
+    # Optimization page (only available in developer mode)
     if view_mode == "Optimization":
+        if not DEVELOPER_MODE:
+            st.error("❌ Optimization mode is only available in developer mode.")
+            st.info("💡 To enable developer mode, set `DEVELOPER_MODE=true` in your environment variables.")
+            return
         if not OPTIMIZATION_AVAILABLE:
             st.error(f"❌ Optimization module not available: {OPTIMIZATION_ERROR}")
             st.info("Please check that all optimization dependencies are installed.")
@@ -140,19 +163,81 @@ def main() -> None:
         col1, col2 = st.columns(2)
         with col1:
             opt_ticker = st.text_input("Ticker", value="TQQQ", key="opt_ticker").strip().upper()
+            
+            # Ticker validation for Optimization tab
+            opt_ticker_valid = True
+            opt_ticker_error_message = None
+            
+            if opt_ticker:
+                # Initialize validation state in session_state if not present
+                if 'ticker_validation_cache' not in st.session_state:
+                    st.session_state['ticker_validation_cache'] = {}
+                
+                # Check cache first (sanitize ticker for cache key to prevent injection)
+                # Only use alphanumeric characters for cache key
+                safe_ticker = ''.join(c for c in opt_ticker if c.isalnum() or c in '.-')
+                cache_key = f"ticker_valid_{safe_ticker}"
+                if cache_key in st.session_state['ticker_validation_cache']:
+                    opt_ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
+                else:
+                    # Validate ticker
+                    try:
+                        feed = YFinanceFeed()
+                        opt_ticker_valid = feed.validate_ticker(opt_ticker)
+                        # Cache the result
+                        st.session_state['ticker_validation_cache'][cache_key] = opt_ticker_valid
+                    except Exception as exc:
+                        # Network error or other exception
+                        opt_ticker_valid = False
+                        opt_ticker_error_message = f"⚠️ 티커 검증 중 오류가 발생했습니다: {exc}"
+                
+                if not opt_ticker_valid:
+                    if opt_ticker_error_message:
+                        st.warning(opt_ticker_error_message)
+                    else:
+                        # Sanitize ticker for display (prevent XSS-like issues)
+                        safe_display_ticker = opt_ticker[:20]  # Limit length
+                        st.error(f"❌ 입력한 Ticker는 존재하지 않거나 지원되지 않습니다. (예: '{safe_display_ticker}')\n실제 존재하는 티커를 입력하세요. 예: 'TQQQ', 'AAPL', 'SPY'")
+                else:
+                    st.success(f"✅ 티커 '{opt_ticker}'가 유효합니다.")
+            else:
+                opt_ticker_valid = False
+            
             search_mode = st.radio("Search Mode", options=["Grid", "Random"], index=0, key="search_mode")
             random_samples = st.number_input("Random Samples", value=100, min_value=10, max_value=1000, step=10, disabled=(search_mode == "Grid"), key="random_samples")
         with col2:
             st.subheader("Date Ranges")
-            is_start = st.date_input("IS Start", value=date(2014, 1, 1), key="is_start")
-            is_end = st.date_input("IS End", value=date(2022, 12, 31), key="is_end")
-            os_start = st.date_input("OS Start", value=date(2023, 1, 1), key="os_start")
-            os_end = st.date_input("OS End", value=date.today(), key="os_end")
+            is_start = st.date_input("IS Start", value=date(2014, 1, 1), key="is_start", max_value=date.today())
+            is_end = st.date_input("IS End", value=date(2022, 12, 31), key="is_end", max_value=date.today())
+            os_start = st.date_input("OS Start", value=date(2023, 1, 1), key="os_start", max_value=date.today())
+            os_end = st.date_input("OS End", value=date.today(), key="os_end", max_value=date.today())
+            
+            # Validate date ranges (show warning only, don't modify session_state after widget creation)
+            if is_start > is_end:
+                st.warning(f"⚠️ IS Start date ({is_start}) is after IS End date ({is_end}). Please adjust the dates.")
+            
+            if os_start > os_end:
+                st.warning(f"⚠️ OS Start date ({os_start}) is after OS End date ({os_end}). Please adjust the dates.")
         
         use_baseline_reset = st.checkbox("Use baseline reset TP/SL", value=True, key="use_baseline_reset")
         shares_per_signal = st.number_input("Shares per Signal", value=10.0, min_value=0.01, step=1.0, key="opt_shares")
         
-        if st.button("🚀 Run Optimization", type="primary"):
+        # Disable button if ticker is invalid
+        opt_run_btn = st.button(
+            "🚀 Run Optimization", 
+            type="primary",
+            disabled=not opt_ticker_valid if opt_ticker else False
+        )
+        
+        if opt_run_btn:
+            # Validate ticker before proceeding
+            if not opt_ticker:
+                st.error("❌ Ticker symbol is required")
+                return
+            if not opt_ticker_valid:
+                st.error("❌ 유효하지 않은 티커입니다. 올바른 티커를 입력하세요.")
+                return
+            
             with st.spinner("📡 Fetching data..."):
                 try:
                     feed = YFinanceFeed()
@@ -190,11 +275,54 @@ def main() -> None:
                         "os": (os_start, os_end),
                     }
                     
-                    summary_df, best_params = run_search(param_space, prices, split)
+                    summary_df, best_params, constraint_stats = run_search(param_space, prices, split)
                     
-                    if best_params is None:
+                    # Display constraint statistics
+                    total = constraint_stats.get("total", 0)
+                    passed = constraint_stats.get("passed", 0)
+                    failed_mdd = constraint_stats.get("failed_mdd", 0)
+                    failed_trades = constraint_stats.get("failed_trades", 0)
+                    failed_hitdays = constraint_stats.get("failed_hitdays", 0)
+                    
+                    # Check if constraints were passed
+                    constraints_passed = passed > 0
+                    
+                    if not constraints_passed:
                         st.warning("⚠️ No valid parameters found (all failed constraints)")
+                        st.info(f"""
+                        **Constraint Statistics:**
+                        - Total parameters tested: {total}
+                        - Parameters passed: {passed}
+                        - Failed MDD constraint (< -60%): {failed_mdd}
+                        - Failed Trades constraint (< 15): {failed_trades}
+                        - Failed HitDays constraint (< 15): {failed_hitdays}
+                        
+                        **Constraints:**
+                        - MDD must be >= -60%
+                        - Trades must be >= 15
+                        - HitDays must be >= 15
+                        """)
+                        
+                        # Show top 10 results anyway
+                        if len(summary_df) > 0:
+                            st.subheader("📊 Top 10 IS Results (Constraints Failed)")
+                            top_is = summary_df.nlargest(10, "IS_CAGR")
+                            display_cols = ["threshold", "tp_threshold", "sl_threshold", "tp_sell", "sl_sell",
+                                           "IS_CAGR", "IS_MDD", "IS_Sortino", "IS_Trades", "IS_HitDays"]
+                            st.dataframe(top_is[display_cols], width='stretch')
+                            st.caption("⚠️ These parameters did not pass all constraints but are shown for reference.")
                         return
+                    elif passed < total:
+                        # Some passed, but show warning
+                        st.warning(f"⚠️ Only {passed} out of {total} parameters passed constraints")
+                        st.info(f"""
+                        **Constraint Statistics:**
+                        - Total parameters tested: {total}
+                        - Parameters passed: {passed} ({passed/total*100:.1f}%)
+                        - Failed MDD constraint (< -60%): {failed_mdd}
+                        - Failed Trades constraint (< 15): {failed_trades}
+                        - Failed HitDays constraint (< 15): {failed_hitdays}
+                        """)
                     
                     st.success("✅ Optimization completed!")
                     
@@ -203,64 +331,437 @@ def main() -> None:
                     top_is = summary_df.nlargest(10, "IS_CAGR")
                     display_cols = ["threshold", "tp_threshold", "sl_threshold", "tp_sell", "sl_sell",
                                    "IS_CAGR", "IS_MDD", "IS_Sortino", "IS_Trades", "IS_HitDays"]
-                    st.dataframe(top_is[display_cols], use_container_width=True)
+                    st.dataframe(top_is[display_cols], width='stretch')
                     
                     # Show best params OS results
-                    st.subheader("🎯 Best Parameters - OS Performance")
-                    best_row = summary_df[
-                        (summary_df["threshold"] == best_params.threshold * 100) &
-                        (summary_df["tp_threshold"] == (best_params.tp_threshold * 100 if best_params.tp_threshold else None)) &
-                        (summary_df["sl_threshold"] == (best_params.sl_threshold * 100 if best_params.sl_threshold else None))
-                    ].iloc[0] if len(summary_df) > 0 else None
-                    
-                    if best_row is not None:
-                        os_cols = ["OS_CAGR", "OS_MDD", "OS_Sortino", "OS_Sharpe", "OS_CumulativeReturn", "OS_Trades", "OS_HitDays"]
-                        st.dataframe(best_row[os_cols].to_frame().T, use_container_width=True)
-                    
-                    # Use Best Params button
-                    if st.button("📋 Use Best Parameters"):
-                        st.session_state['best_params'] = best_params
-                        st.success("✅ Best parameters saved. Go to Backtest tab to use them.")
+                    if best_params is not None:
+                        st.subheader("🎯 Best Parameters - OS Performance")
+                        best_row = summary_df[
+                            (summary_df["threshold"] == best_params.threshold * 100) &
+                            (summary_df["tp_threshold"] == (best_params.tp_threshold * 100 if best_params.tp_threshold else None)) &
+                            (summary_df["sl_threshold"] == (best_params.sl_threshold * 100 if best_params.sl_threshold else None))
+                        ].iloc[0] if len(summary_df) > 0 else None
+                        
+                        if best_row is not None:
+                            os_cols = ["OS_CAGR", "OS_MDD", "OS_Sortino", "OS_Sharpe", "OS_CumulativeReturn", "OS_Trades", "OS_HitDays"]
+                            st.dataframe(best_row[os_cols].to_frame().T, width='stretch')
+                        
+                        # Use Best Params button
+                        if st.button("📋 Use Best Parameters"):
+                            st.session_state['best_params'] = best_params
+                            st.success("✅ Best parameters saved. Go to Backtest tab to use them.")
+                    else:
+                        st.warning("⚠️ Could not determine best parameters")
                         
                 except Exception as exc:
                     st.error(f"❌ Optimization failed: {exc}")
-                    with st.expander("Technical Details"):
-                        import traceback
-                        st.code(traceback.format_exc())
+                    # Only show detailed traceback in debug mode
+                    if debug_mode:
+                        with st.expander("Technical Details"):
+                            import traceback
+                            # Sanitize error message to prevent information leakage
+                            tb_str = traceback.format_exc()
+                            # Remove file paths and replace with generic paths
+                            import re
+                            tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
+                            st.code(tb_str)
+                    else:
+                        st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
+        
+        return
+    
+    # Leverage Mode page (only available in developer mode)
+    if view_mode == "Leverage Mode":
+        if not DEVELOPER_MODE:
+            st.error("❌ Leverage Mode is only available in developer mode.")
+            st.info("💡 To enable developer mode, set `DEVELOPER_MODE=true` in your environment variables.")
+            return
+        if not OPTIMIZATION_AVAILABLE:
+            st.error(f"❌ Optimization module not available: {OPTIMIZATION_ERROR}")
+            st.info("Please check that all optimization dependencies are installed.")
+            return
+        
+        st.header("⚡ Leverage Mode - TP/SL 조합 최적화")
+        st.info("""
+        **Threshold 고정, TP/SL 조합 집중 탐색**
+        
+        Threshold는 사용자가 직접 입력하여 고정하고, Take-Profit/Stop-Loss 비율 조합만 탐색하여 CAGR 최대화를 목표로 합니다.
+        
+        **목표 지표**: CAGR 우선순위 → Sortino → Sharpe
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            lev_ticker = st.text_input("Ticker", value="TQQQ", key="lev_ticker").strip().upper()
+            
+            # Ticker validation for Leverage Mode tab
+            lev_ticker_valid = True
+            lev_ticker_error_message = None
+            
+            if lev_ticker:
+                if 'ticker_validation_cache' not in st.session_state:
+                    st.session_state['ticker_validation_cache'] = {}
+                
+                cache_key = f"ticker_valid_{lev_ticker}"
+                if cache_key in st.session_state['ticker_validation_cache']:
+                    lev_ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
+                else:
+                    try:
+                        feed = YFinanceFeed()
+                        lev_ticker_valid = feed.validate_ticker(lev_ticker)
+                        st.session_state['ticker_validation_cache'][cache_key] = lev_ticker_valid
+                    except Exception as exc:
+                        lev_ticker_valid = False
+                        lev_ticker_error_message = f"⚠️ 티커 검증 중 오류가 발생했습니다: {exc}"
+                
+                if not lev_ticker_valid:
+                    if lev_ticker_error_message:
+                        st.warning(lev_ticker_error_message)
+                    else:
+                        safe_display_ticker = lev_ticker[:20]
+                        st.error(f"❌ 입력한 Ticker는 존재하지 않거나 지원되지 않습니다. (예: '{safe_display_ticker}')\n실제 존재하는 티커를 입력하세요. 예: 'TQQQ', 'AAPL', 'SPY'")
+                else:
+                    st.success(f"✅ 티커 '{lev_ticker}'가 유효합니다.")
+            else:
+                lev_ticker_valid = False
+            
+            # Threshold input (fixed)
+            st.subheader("Threshold (고정값)")
+            threshold_input = st.number_input(
+                "Threshold (%)",
+                value=-4.1,
+                step=0.1,
+                format="%0.1f",
+                help="Dip threshold as percentage (must be negative, e.g., -4.1 for -4.1% drop). This value is fixed for all optimization runs.",
+                key="lev_threshold"
+            )
+            
+            if threshold_input >= 0:
+                st.error("❌ Threshold must be negative (e.g., -4.1 for -4.1% drop)")
+                threshold_valid = False
+            else:
+                threshold_valid = True
+            
+            search_mode_lev = st.radio("Search Mode", options=["Grid", "Random"], index=0, key="search_mode_lev")
+            random_samples_lev = st.number_input(
+                "Random Samples", 
+                value=100, 
+                min_value=10, 
+                max_value=1000, 
+                step=10, 
+                disabled=(search_mode_lev == "Grid"), 
+                key="random_samples_lev"
+            )
+        
+        with col2:
+            st.subheader("Date Ranges")
+            lev_is_start = st.date_input("IS Start", value=date(2014, 1, 1), key="lev_is_start", max_value=date.today())
+            lev_is_end = st.date_input("IS End", value=date(2022, 12, 31), key="lev_is_end", max_value=date.today())
+            lev_os_start = st.date_input("OS Start", value=date(2023, 1, 1), key="lev_os_start", max_value=date.today())
+            lev_os_end = st.date_input("OS End", value=date.today(), key="lev_os_end", max_value=date.today())
+            
+            if lev_is_start > lev_is_end:
+                st.warning(f"⚠️ IS Start date ({lev_is_start}) is after IS End date ({lev_is_end}). Please adjust the dates.")
+            
+            if lev_os_start > lev_os_end:
+                st.warning(f"⚠️ OS Start date ({lev_os_start}) is after OS End date ({lev_os_end}). Please adjust the dates.")
+        
+        # TP/SL Range Settings
+        st.subheader("TP/SL 탐색 범위 설정")
+        col_tp1, col_tp2, col_sl1, col_sl2 = st.columns(4)
+        
+        with col_tp1:
+            tp_min = st.number_input("TP Threshold Min (%)", value=15.0, min_value=5.0, max_value=100.0, step=5.0, key="lev_tp_min")
+            tp_max = st.number_input("TP Threshold Max (%)", value=50.0, min_value=15.0, max_value=100.0, step=5.0, key="lev_tp_max")
+            if tp_min >= tp_max:
+                st.error("❌ TP Min must be less than TP Max")
+        
+        with col_tp2:
+            tp_step = st.number_input("TP Step (%)", value=5.0, min_value=1.0, max_value=20.0, step=1.0, key="lev_tp_step", disabled=(search_mode_lev == "Random"))
+            tp_sell_options_input = st.multiselect(
+                "TP Sell Options (%)",
+                options=[25, 50, 75, 100],
+                default=[25, 50, 75, 100],
+                key="lev_tp_sell_options"
+            )
+            if not tp_sell_options_input:
+                st.warning("⚠️ At least one TP Sell option must be selected")
+        
+        with col_sl1:
+            sl_min = st.number_input("SL Threshold Min (%)", value=-50.0, min_value=-100.0, max_value=-10.0, step=5.0, key="lev_sl_min")
+            sl_max = st.number_input("SL Threshold Max (%)", value=-10.0, min_value=-50.0, max_value=-5.0, step=5.0, key="lev_sl_max")
+            if sl_min >= sl_max:
+                st.error("❌ SL Min must be less than SL Max (both negative)")
+        
+        with col_sl2:
+            sl_step = st.number_input("SL Step (%)", value=5.0, min_value=1.0, max_value=20.0, step=1.0, key="lev_sl_step", disabled=(search_mode_lev == "Random"))
+            sl_sell_options_input = st.multiselect(
+                "SL Sell Options (%)",
+                options=[25, 50, 75, 100],
+                default=[25, 50, 75, 100],
+                key="lev_sl_sell_options"
+            )
+            if not sl_sell_options_input:
+                st.warning("⚠️ At least one SL Sell option must be selected")
+        
+        # Other settings
+        st.subheader("기타 설정")
+        col_other1, col_other2 = st.columns(2)
+        with col_other1:
+            shares_per_signal_lev = st.number_input("Shares per Signal", value=10.0, min_value=0.01, step=1.0, key="lev_shares")
+        with col_other2:
+            use_baseline_reset_lev = st.checkbox("Use baseline reset TP/SL", value=True, key="lev_baseline_reset")
+        
+        col_fee1, col_fee2 = st.columns(2)
+        with col_fee1:
+            fee_rate_lev = st.number_input("Fee Rate (%)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_fee_rate")
+        with col_fee2:
+            slippage_rate_lev = st.number_input("Slippage Rate (%)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_slippage_rate")
+        
+        # Run button
+        can_run = (
+            lev_ticker_valid and 
+            threshold_valid and 
+            tp_min < tp_max and 
+            sl_min < sl_max and 
+            tp_sell_options_input and 
+            sl_sell_options_input
+        )
+        
+        lev_run_btn = st.button(
+            "🚀 Run Leverage Optimization", 
+            type="primary",
+            disabled=not can_run
+        )
+        
+        if lev_run_btn:
+            if not lev_ticker:
+                st.error("❌ Ticker symbol is required")
+                return
+            if not lev_ticker_valid:
+                st.error("❌ 유효하지 않은 티커입니다. 올바른 티커를 입력하세요.")
+                return
+            if not threshold_valid:
+                st.error("❌ Threshold must be negative")
+                return
+            
+            with st.spinner("📡 Fetching data..."):
+                try:
+                    feed = YFinanceFeed()
+                    full_start = min(lev_is_start, lev_os_start)
+                    full_end = max(lev_is_end, lev_os_end)
+                    prices = feed.get_daily(lev_ticker, full_start, full_end)
+                    st.success(f"✅ Loaded {len(prices)} days of data")
+                except Exception as exc:
+                    st.error(f"❌ Data fetch failed: {exc}")
+                    return
+            
+            with st.spinner("🔍 Running Leverage Mode optimization..."):
+                try:
+                    # Convert sell options from percentage to decimal
+                    tp_sell_decimal = [x / 100.0 for x in tp_sell_options_input]
+                    sl_sell_decimal = [x / 100.0 for x in sl_sell_options_input]
+                    
+                    # Generate parameter space
+                    threshold_decimal = threshold_input / 100.0
+                    param_space = generate_leverage_param_space(
+                        threshold=threshold_decimal,
+                        tp_range=(tp_min, tp_max),
+                        sl_range=(sl_min, sl_max),
+                        tp_sell_options=tp_sell_decimal,
+                        sl_sell_options=sl_sell_decimal,
+                        tp_step=tp_step,
+                        sl_step=sl_step,
+                        mode="grid" if search_mode_lev == "Grid" else "random",
+                        budget_n=random_samples_lev if search_mode_lev == "Random" else 100,
+                        base_params=BacktestParams(
+                            threshold=threshold_decimal,
+                            shares_per_signal=shares_per_signal_lev,
+                            fee_rate=fee_rate_lev / 100.0,
+                            slippage_rate=slippage_rate_lev / 100.0,
+                            reset_baseline_after_tp_sl=use_baseline_reset_lev,
+                            tp_hysteresis=0.0,
+                            sl_hysteresis=0.0,
+                            tp_cooldown_days=0,
+                            sl_cooldown_days=0,
+                        ),
+                    )
+                    
+                    st.info(f"📊 Testing {len(param_space)} parameter combinations...")
+                    
+                    # Run search
+                    split = {
+                        "is": (lev_is_start, lev_is_end),
+                        "os": (lev_os_start, lev_os_end),
+                    }
+                    
+                    summary_df, best_params, constraint_stats = run_search(
+                        param_space=param_space,
+                        prices=prices,
+                        split=split,
+                        save_every=None,  # Don't save intermediate results
+                    )
+                    
+                    if summary_df is None or summary_df.empty:
+                        st.warning("⚠️ 조건 내 유효한 결과 없음")
+                        return
+                    
+                    # Display results
+                    st.success("✅ Optimization completed!")
+                    
+                    # Constraint statistics
+                    st.subheader("📊 Constraint Statistics")
+                    col_stat1, col_stat2, col_stat3, col_stat4, col_stat5 = st.columns(5)
+                    with col_stat1:
+                        st.metric("Total", constraint_stats.get("total", 0))
+                    with col_stat2:
+                        st.metric("Passed", constraint_stats.get("passed", 0))
+                    with col_stat3:
+                        st.metric("Failed MDD", constraint_stats.get("failed_mdd", 0))
+                    with col_stat4:
+                        st.metric("Failed Trades", constraint_stats.get("failed_trades", 0))
+                    with col_stat5:
+                        st.metric("Failed HitDays", constraint_stats.get("failed_hitdays", 0))
+                    
+                    # Top results table
+                    st.subheader("🏆 Top Results (CAGR 기준)")
+                    
+                    # Sort by CAGR descending
+                    top_results = summary_df.nlargest(10, "IS_CAGR")
+                    
+                    # Format display columns (summary_df has: tp_threshold, sl_threshold, tp_sell, sl_sell, IS_CAGR, etc.)
+                    display_cols = [
+                        "tp_threshold", "sl_threshold", "tp_sell", "sl_sell",
+                        "IS_CAGR", "IS_Sortino", "IS_Sharpe", "IS_MDD"
+                    ]
+                    
+                    # Filter to available columns only
+                    available_cols = summary_df.columns.tolist()
+                    display_cols = [col for col in display_cols if col in available_cols]
+                    
+                    if not display_cols:
+                        st.warning("⚠️ No display columns found in results")
+                        return
+                    
+                    # Convert to percentage for display
+                    display_df = top_results[display_cols].copy()
+                    
+                    # Format percentage columns (these are already in percentage form from summary_df)
+                    if "tp_threshold" in display_df.columns:
+                        display_df["tp_threshold"] = display_df["tp_threshold"].round(1).astype(str) + "%"
+                    if "sl_threshold" in display_df.columns:
+                        display_df["sl_threshold"] = display_df["sl_threshold"].round(1).astype(str) + "%"
+                    if "tp_sell" in display_df.columns:
+                        display_df["tp_sell"] = display_df["tp_sell"].round(0).astype(int).astype(str) + "%"
+                    if "sl_sell" in display_df.columns:
+                        display_df["sl_sell"] = display_df["sl_sell"].round(0).astype(int).astype(str) + "%"
+                    if "IS_CAGR" in display_df.columns:
+                        display_df["IS_CAGR"] = (display_df["IS_CAGR"] * 100).round(2).astype(str) + "%"
+                    if "IS_Sortino" in display_df.columns:
+                        display_df["IS_Sortino"] = display_df["IS_Sortino"].round(2)
+                    if "IS_Sharpe" in display_df.columns:
+                        display_df["IS_Sharpe"] = display_df["IS_Sharpe"].round(2)
+                    if "IS_MDD" in display_df.columns:
+                        display_df["IS_MDD"] = (display_df["IS_MDD"] * 100).round(2).astype(str) + "%"
+                    
+                    # Rename columns for display
+                    display_df = display_df.rename(columns={
+                        "tp_threshold": "TP Threshold",
+                        "sl_threshold": "SL Threshold",
+                        "tp_sell": "TP Sell",
+                        "sl_sell": "SL Sell",
+                        "IS_CAGR": "CAGR",
+                        "IS_Sortino": "Sortino",
+                        "IS_Sharpe": "Sharpe",
+                        "IS_MDD": "MDD",
+                    })
+                    
+                    st.dataframe(display_df, width='stretch', height=400)
+                    
+                    # Best parameters
+                    if best_params:
+                        st.subheader("🎯 Best Parameters")
+                        st.json({
+                            "threshold": f"{threshold_input}%",
+                            "tp_threshold": f"{best_params.tp_threshold * 100:.1f}%",
+                            "sl_threshold": f"{best_params.sl_threshold * 100:.1f}%",
+                            "tp_sell_percentage": f"{best_params.tp_sell_percentage * 100:.0f}%",
+                            "sl_sell_percentage": f"{best_params.sl_sell_percentage * 100:.0f}%",
+                        })
+                        
+                        if st.button("📋 Use Best Parameters"):
+                            st.session_state['best_params'] = best_params
+                            st.success("✅ Best parameters saved. Go to Backtest tab to use them.")
+                    else:
+                        st.warning("⚠️ Could not determine best parameters")
+                        
+                except Exception as exc:
+                    st.error(f"❌ Leverage Mode optimization failed: {exc}")
+                    # Only show detailed traceback in debug mode
+                    if debug_mode:
+                        with st.expander("Technical Details"):
+                            import traceback
+                            # Sanitize error message to prevent information leakage
+                            tb_str = traceback.format_exc()
+                            # Remove file paths and replace with generic paths
+                            import re
+                            tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
+                            st.code(tb_str)
+                    else:
+                        st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
         
         return
 
     with st.sidebar:
         if view_mode == "Run Backtest":
-            st.header("Purchase Mode")
-            
-            # Get loaded preset to determine initial purchase_mode
-            loaded_params_for_mode = None
-            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
-                loaded_params_for_mode = st.session_state['loaded_preset']
-            
-            # Determine initial purchase mode index
-            purchase_mode_index = 0  # Default to Budget-based
-            if loaded_params_for_mode:
-                # If preset has shares_per_signal, use Shares-based mode
-                if loaded_params_for_mode.shares_per_signal is not None:
-                    purchase_mode_index = 1  # Shares-based
-            
-            purchase_mode = st.radio(
-                "Purchase Mode",
-                options=["Budget-based", "Shares-based"],
-                index=purchase_mode_index,
-                help="Budget-based: Buy with fixed weekly budget. Shares-based: Buy fixed number of shares per signal."
-            )
-
             st.header("Parameters")
             
             # Ticker input with validation
             ticker = st.text_input(
                 "Ticker",
                 value="TQQQ",
-                help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)"
+                help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)",
+                key="ticker_input"
             ).strip().upper()
+            
+            # Ticker validation
+            ticker_valid = True
+            ticker_error_message = None
+            
+            if ticker:
+                # Initialize validation state in session_state if not present
+                if 'ticker_validation_cache' not in st.session_state:
+                    st.session_state['ticker_validation_cache'] = {}
+                
+                # Check cache first (sanitize ticker for cache key to prevent injection)
+                # Only use alphanumeric characters for cache key
+                safe_ticker = ''.join(c for c in ticker if c.isalnum() or c in '.-')
+                cache_key = f"ticker_valid_{safe_ticker}"
+                if cache_key in st.session_state['ticker_validation_cache']:
+                    ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
+                else:
+                    # Validate ticker
+                    try:
+                        feed = YFinanceFeed()
+                        ticker_valid = feed.validate_ticker(ticker)
+                        # Cache the result
+                        st.session_state['ticker_validation_cache'][cache_key] = ticker_valid
+                    except Exception as exc:
+                        # Network error or other exception
+                        ticker_valid = False
+                        ticker_error_message = f"⚠️ 티커 검증 중 오류가 발생했습니다: {exc}"
+                
+                if not ticker_valid:
+                    if ticker_error_message:
+                        st.warning(ticker_error_message)
+                    else:
+                        # Sanitize ticker for display (prevent XSS-like issues)
+                        safe_display_ticker = ticker[:20]  # Limit length
+                        st.error(f"❌ 입력한 Ticker는 존재하지 않거나 지원되지 않습니다. (예: '{safe_display_ticker}')\n실제 존재하는 티커를 입력하세요. 예: 'TQQQ', 'AAPL', 'SPY'")
+                else:
+                    st.success(f"✅ 티커 '{ticker}'가 유효합니다.")
+            else:
+                ticker_valid = False
             
             # Presets section - Load preset first (before inputs)
             if PRESETS_AVAILABLE and get_preset_manager:
@@ -361,14 +862,20 @@ def main() -> None:
                 start = st.date_input(
                     "Start Date",
                     help="Backtest start date",
-                    key="start_date_input"
+                    key="start_date_input",
+                    max_value=date.today()
                 )
             with col2:
                 end = st.date_input(
                     "End Date",
                     help="Backtest end date",
-                    key="end_date_input"
+                    key="end_date_input",
+                    max_value=date.today()
                 )
+            
+            # Validate date range: start <= end (show warning only, don't modify session_state after widget creation)
+            if start > end:
+                st.warning(f"⚠️ Start date ({start}) is after end date ({end}). Please adjust the dates.")
             
             # Threshold input
             threshold_value = None
@@ -383,57 +890,18 @@ def main() -> None:
                 help="Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1% drop)"
             )
             
-            # Conditional inputs based on purchase mode
-            if purchase_mode == "Budget-based":
-                weekly_budget_value = None
-                mode_value = None
-                carryover_value = True
-                if loaded_params:
-                    weekly_budget_value = loaded_params.weekly_budget
-                    mode_value = loaded_params.mode
-                    carryover_value = loaded_params.carryover if loaded_params.carryover is not None else True
-                
-                weekly_budget = st.number_input(
-                    "Weekly Budget",
-                    value=weekly_budget_value if weekly_budget_value is not None else 500.0,
-                    step=50.0,
-                    min_value=0.01,
-                    help="Amount to invest per week (in currency units)"
-                )
-                mode_options = ["split", "first_hit"]
-                mode_index = 0
-                if loaded_params and loaded_params.mode:
-                    try:
-                        mode_index = mode_options.index(loaded_params.mode.value if hasattr(loaded_params.mode, 'value') else str(loaded_params.mode))
-                    except (ValueError, AttributeError):
-                        mode_index = 0
-                mode = st.selectbox(
-                    "Allocation Mode",
-                    options=mode_options,
-                    index=mode_index,
-                    help="split: Divide budget equally among signal days. first_hit: Spend entire budget on first signal."
-                )
-                carryover = st.checkbox(
-                    "Carryover",
-                    value=carryover_value,
-                    help="Carry unused weekly budget to next week"
-                )
-                shares_per_signal = None
-            else:  # Shares-based
-                shares_per_signal_value = None
-                if loaded_params:
-                    shares_per_signal_value = loaded_params.shares_per_signal
-                
-                shares_per_signal = st.number_input(
-                    "Shares per Signal",
-                    value=shares_per_signal_value if shares_per_signal_value is not None else 10.0,
-                    step=1.0,
-                    min_value=0.01,
-                    help="Number of shares to buy each time a signal occurs"
-                )
-                weekly_budget = None
-                mode = None
-                carryover = None
+            # Shares per Signal input (always use shares-based mode)
+            shares_per_signal_value = None
+            if loaded_params:
+                shares_per_signal_value = loaded_params.shares_per_signal
+            
+            shares_per_signal = st.number_input(
+                "Shares per Signal",
+                value=shares_per_signal_value if shares_per_signal_value is not None else 10.0,
+                step=1.0,
+                min_value=0.01,
+                help="Number of shares to buy each time a signal occurs"
+            )
             
             # Fee and slippage
             fee_rate_value = None
@@ -462,16 +930,8 @@ def main() -> None:
             
             # Take-Profit / Stop-Loss section
             st.header("Take-Profit / Stop-Loss")
-            enable_tp_sl_value = False
-            if loaded_params:
-                enable_tp_sl_value = loaded_params.enable_tp_sl
             
-            enable_tp_sl = st.checkbox(
-                "Enable TP/SL",
-                value=enable_tp_sl_value,
-                help="Enable portfolio-level take-profit and stop-loss triggers"
-            )
-            
+            # Initialize values from loaded preset if available
             tp_threshold = None
             sl_threshold = None
             tp_sell_percentage = 1.0
@@ -482,7 +942,7 @@ def main() -> None:
             tp_cooldown_days = 0
             sl_cooldown_days = 0
             
-            if loaded_params and loaded_params.enable_tp_sl:
+            if loaded_params:
                 tp_threshold = (loaded_params.tp_threshold * 100.0) if loaded_params.tp_threshold else None
                 sl_threshold = (loaded_params.sl_threshold * 100.0) if loaded_params.sl_threshold else None
                 tp_sell_percentage = loaded_params.tp_sell_percentage
@@ -493,49 +953,79 @@ def main() -> None:
                 tp_cooldown_days = loaded_params.tp_cooldown_days
                 sl_cooldown_days = loaded_params.sl_cooldown_days
             
-            if enable_tp_sl:
+            # Enable TP/SL independently
+            enable_tp = st.checkbox(
+                "Enable Take-Profit (TP)",
+                value=(tp_threshold is not None),
+                help="Enable take-profit trigger (can be used independently from stop-loss)"
+            )
+            
+            enable_sl = st.checkbox(
+                "Enable Stop-Loss (SL)",
+                value=(sl_threshold is not None),
+                help="Enable stop-loss trigger (can be used independently from take-profit)"
+            )
+            
+            if enable_tp:
                 tp_threshold = st.number_input(
                     "Take-Profit Threshold (%)",
-                    value=tp_threshold,
+                    value=tp_threshold if tp_threshold is not None else 30.0,
                     step=1.0,
                     format="%0.1f",
                     help="Trigger take-profit at this gain percentage (e.g., 30 for 30%)"
                 )
+            else:
+                tp_threshold = None
+            
+            if enable_sl:
                 sl_threshold = st.number_input(
                     "Stop-Loss Threshold (%)",
-                    value=sl_threshold,
+                    value=sl_threshold if sl_threshold is not None else -20.0,
                     step=1.0,
                     format="%0.1f",
                     help="Trigger stop-loss at this loss percentage (e.g., -25 for -25%)"
                 )
+            else:
+                sl_threshold = None
+            
+            # Show TP/SL options only if at least one is enabled
+            if enable_tp or enable_sl:
                 
-                # TP/SL Sell Percentage selectbox index calculation
-                tp_sell_percentage_index = 3  # Default to 100%
-                if loaded_params:
-                    tp_pct_100 = int(loaded_params.tp_sell_percentage * 100)
-                    if tp_pct_100 in [25, 50, 75, 100]:
-                        tp_sell_percentage_index = [25, 50, 75, 100].index(tp_pct_100)
+                # TP Sell Percentage (only if TP is enabled)
+                if enable_tp:
+                    tp_sell_percentage_index = 3  # Default to 100%
+                    if loaded_params and loaded_params.tp_sell_percentage:
+                        tp_pct_100 = int(loaded_params.tp_sell_percentage * 100)
+                        if tp_pct_100 in [25, 50, 75, 100]:
+                            tp_sell_percentage_index = [25, 50, 75, 100].index(tp_pct_100)
+                    
+                    tp_sell_percentage = st.selectbox(
+                        "TP Sell Percentage",
+                        options=[25, 50, 75, 100],
+                        index=tp_sell_percentage_index,
+                        format_func=lambda x: f"{x}%",
+                        help="Percentage of shares to sell when Take-Profit triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
+                    ) / 100.0
+                else:
+                    tp_sell_percentage = 1.0  # Default value when TP is disabled
                 
-                sl_sell_percentage_index = 3  # Default to 100%
-                if loaded_params:
-                    sl_pct_100 = int(loaded_params.sl_sell_percentage * 100)
-                    if sl_pct_100 in [25, 50, 75, 100]:
-                        sl_sell_percentage_index = [25, 50, 75, 100].index(sl_pct_100)
-                
-                tp_sell_percentage = st.selectbox(
-                    "TP Sell Percentage",
-                    options=[25, 50, 75, 100],
-                    index=tp_sell_percentage_index,
-                    format_func=lambda x: f"{x}%",
-                    help="Percentage of shares to sell when Take-Profit triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
-                ) / 100.0
-                sl_sell_percentage = st.selectbox(
-                    "SL Sell Percentage",
-                    options=[25, 50, 75, 100],
-                    index=sl_sell_percentage_index,
-                    format_func=lambda x: f"{x}%",
-                    help="Percentage of shares to sell when Stop-Loss triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
-                ) / 100.0
+                # SL Sell Percentage (only if SL is enabled)
+                if enable_sl:
+                    sl_sell_percentage_index = 3  # Default to 100%
+                    if loaded_params and loaded_params.sl_sell_percentage:
+                        sl_pct_100 = int(loaded_params.sl_sell_percentage * 100)
+                        if sl_pct_100 in [25, 50, 75, 100]:
+                            sl_sell_percentage_index = [25, 50, 75, 100].index(sl_pct_100)
+                    
+                    sl_sell_percentage = st.selectbox(
+                        "SL Sell Percentage",
+                        options=[25, 50, 75, 100],
+                        index=sl_sell_percentage_index,
+                        format_func=lambda x: f"{x}%",
+                        help="Percentage of shares to sell when Stop-Loss triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
+                    ) / 100.0
+                else:
+                    sl_sell_percentage = 1.0  # Default value when SL is disabled
                 
                 # Baseline reset and advanced options
                 st.subheader("Baseline Reset Options")
@@ -671,7 +1161,13 @@ def main() -> None:
                         help="SL 트리거 후 이 기간 동안은 SL 조건을 만족해도 트리거되지 않습니다. 예: 5일 설정 시 SL 트리거 후 5일간 SL 비활성화. 기본값: 0 (비활성화)"
                     )
             
-            run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
+            # Disable button if ticker is invalid
+            run_btn = st.button(
+                "🚀 Run Backtest", 
+                type="primary", 
+                width='stretch',
+                disabled=not ticker_valid if ticker else False
+            )
             
             # Handle Save Current Settings button (if clicked)
             # This needs to happen after all inputs are collected but before backtest runs
@@ -680,15 +1176,12 @@ def main() -> None:
                     # Build BacktestParams from current inputs
                     save_params = BacktestParams(
                         threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
-                        weekly_budget=float(weekly_budget) if weekly_budget else None,
-                        mode=mode,  # type: ignore[arg-type]
-                        carryover=carryover,
                         shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
                         fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0005,
                         slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0005,
-                        enable_tp_sl=enable_tp_sl,
-                        tp_threshold=float(tp_threshold) / 100.0 if enable_tp_sl and tp_threshold is not None else None,
-                        sl_threshold=float(sl_threshold) / 100.0 if enable_tp_sl and sl_threshold is not None else None,
+                        enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),  # Auto-set based on thresholds
+                        tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
+                        sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,
                         tp_sell_percentage=tp_sell_percentage,
                         sl_sell_percentage=sl_sell_percentage,
                         reset_baseline_after_tp_sl=reset_baseline_after_tp_sl,
@@ -761,9 +1254,18 @@ def main() -> None:
                     st.success(f"✅ Loaded CSV from: {csv_path}")
             except Exception as exc:
                 st.error(f"❌ CSV load failed: {exc}")
-                with st.expander("Technical Details"):
-                    import traceback
-                    st.code(traceback.format_exc())
+                # Only show detailed traceback in debug mode
+                if debug_mode:
+                    with st.expander("Technical Details"):
+                        import traceback
+                        # Sanitize error message to prevent information leakage
+                        tb_str = traceback.format_exc()
+                        # Remove file paths and replace with generic paths
+                        import re
+                        tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
+                        st.code(tb_str)
+                else:
+                    st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
                 return
 
             # Display CSV results
@@ -835,6 +1337,8 @@ def main() -> None:
         
         if not ticker:
             errors.append("❌ Ticker symbol is required")
+        elif not ticker_valid:
+            errors.append("❌ 유효하지 않은 티커입니다. 올바른 티커를 입력하세요.")
         
         if start > end:
             errors.append(f"❌ End date ({end}) must be after start date ({start})")
@@ -844,14 +1348,9 @@ def main() -> None:
         elif threshold >= 0:
             errors.append("❌ Threshold must be negative (e.g., -4.1 for -4.1% drop)")
         
-        if purchase_mode == "Budget-based":
-            if weekly_budget is None or weekly_budget <= 0:
-                errors.append("❌ Weekly budget must be positive")
-            if mode is None:
-                errors.append("❌ Allocation mode must be selected")
-        else:  # Shares-based
-            if shares_per_signal is None or shares_per_signal <= 0:
-                errors.append("❌ Shares per signal must be positive")
+        # Shares per signal validation (always required)
+        if shares_per_signal is None or shares_per_signal <= 0:
+            errors.append("❌ Shares per signal must be positive")
         
         if fee_rate is None:
             errors.append("❌ Fee rate must be provided and non-negative (e.g., 0.05 for 0.05%)")
@@ -863,16 +1362,13 @@ def main() -> None:
         elif slippage_rate < 0:
             errors.append("❌ Slippage rate must be non-negative (e.g., 0.05 for 0.05%)")
         
-        # TP/SL validation
-        if enable_tp_sl:
-            if tp_threshold is None:
-                errors.append("❌ Take-profit threshold must be provided when TP/SL is enabled")
-            elif tp_threshold <= 0:
+        # TP/SL validation (each validated independently)
+        if tp_threshold is not None:
+            if tp_threshold <= 0:
                 errors.append("❌ Take-profit threshold must be positive (e.g., 30 for 30%)")
-            
-            if sl_threshold is None:
-                errors.append("❌ Stop-loss threshold must be provided when TP/SL is enabled")
-            elif sl_threshold >= 0:
+        
+        if sl_threshold is not None:
+            if sl_threshold >= 0:
                 errors.append("❌ Stop-loss threshold must be negative (e.g., -25 for -25%)")
         
         if errors:
@@ -888,9 +1384,18 @@ def main() -> None:
                 st.success(f"✅ Fetched {len(prices)} days of data for {ticker}")
             except Exception as exc:
                 st.error(f"❌ Data fetch failed: {exc}")
-                with st.expander("Technical Details"):
-                    import traceback
-                    st.code(traceback.format_exc())
+                # Only show detailed traceback in debug mode
+                if debug_mode:
+                    with st.expander("Technical Details"):
+                        import traceback
+                        # Sanitize error message to prevent information leakage
+                        tb_str = traceback.format_exc()
+                        # Remove file paths and replace with generic paths
+                        import re
+                        tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
+                        st.code(tb_str)
+                else:
+                    st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
                 return
         
         # Run backtest with spinner
@@ -898,13 +1403,10 @@ def main() -> None:
             try:
                 params = BacktestParams(
                     threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
-                    weekly_budget=float(weekly_budget) if weekly_budget else None,
-                    mode=mode,  # type: ignore[arg-type]
-                    carryover=carryover if carryover is not None else None,
                     shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
                     fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0,
                     slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0,
-                    enable_tp_sl=enable_tp_sl,
+                    enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),  # Auto-set based on thresholds
                     tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
                     sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,
                     tp_sell_percentage=tp_sell_percentage,
@@ -920,9 +1422,18 @@ def main() -> None:
                 st.success("✅ Backtest completed successfully!")
             except Exception as exc:
                 st.error(f"❌ Backtest failed: {exc}")
-                with st.expander("Technical Details"):
-                    import traceback
-                    st.code(traceback.format_exc())
+                # Only show detailed traceback in debug mode
+                if debug_mode:
+                    with st.expander("Technical Details"):
+                        import traceback
+                        # Sanitize error message to prevent information leakage
+                        tb_str = traceback.format_exc()
+                        # Remove file paths and replace with generic paths
+                        import re
+                        tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
+                        st.code(tb_str)
+                else:
+                    st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
                 return
         
         # Save CSV automatically
@@ -955,7 +1466,8 @@ def main() -> None:
         
         with col2:
             st.metric("Cumulative Return", f"{metrics['CumulativeReturn']*100:.2f}%")
-            st.metric("CAGR", f"{metrics['CAGR']*100:.2f}%")
+            st.metric("Strategy CAGR", f"{metrics['CAGR']*100:.2f}%")
+            st.metric("Benchmark CAGR (Buy & Hold)", f"{metrics.get('BenchmarkCAGR', 0.0)*100:.2f}%")
             st.metric("Maximum Drawdown", f"{metrics['MDD']*100:.2f}%")
             st.metric("XIRR", f"{metrics['XIRR']*100:.2f}%")
         
@@ -965,7 +1477,7 @@ def main() -> None:
             st.metric("Ending Equity", f"${metrics['EndingEquity']:,.2f}")
         
         # TP/SL metrics (if enabled)
-        if enable_tp_sl and "NumTakeProfits" in metrics:
+        if (tp_threshold is not None or sl_threshold is not None) and "NumTakeProfits" in metrics:
             st.subheader("🎯 Take-Profit / Stop-Loss Metrics")
             tp_col1, tp_col2, tp_col3, tp_col4 = st.columns(4)
             with tp_col1:
@@ -1003,7 +1515,7 @@ def main() -> None:
                 ))
                 
                 # Add TP/SL markers if enabled
-                if enable_tp_sl and "TP_triggered" in daily.columns:
+                if (tp_threshold is not None or sl_threshold is not None) and "TP_triggered" in daily.columns:
                     tp_mask = daily["TP_triggered"]
                     sl_mask = daily["SL_triggered"]
                     
@@ -1048,7 +1560,7 @@ def main() -> None:
                     hovermode='x unified',
                     template='plotly_white',
                     height=500,
-                    showlegend=True if enable_tp_sl and "TP_triggered" in daily.columns and (daily["TP_triggered"].any() or daily["SL_triggered"].any()) else False
+                    showlegend=True if (tp_threshold is not None or sl_threshold is not None) and "TP_triggered" in daily.columns and (daily["TP_triggered"].any() or daily["SL_triggered"].any()) else False
                 )
                 st.plotly_chart(fig, width='stretch')
             else:

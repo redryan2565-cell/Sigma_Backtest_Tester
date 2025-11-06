@@ -4,15 +4,15 @@
 
 ## 주요 기능
 
-- **Budget-based 모드**: 주간 예산 기반 매수
-- **Shares-based 모드**: 신호당 고정 주식 수 매수
+- **Shares-based 모드**: 신호당 고정 주식 수 매수 (Budget-based 모드는 제거됨)
 - **Take-Profit / Stop-Loss (TP/SL)**: 포트폴리오 수익률 기반 자동 매도
   - Baseline Reset: TP/SL 트리거 후 기준선 리셋으로 연속 트리거 방지
   - Hysteresis: 작은 변동으로 인한 재트리거 방지
   - Cooldown: 트리거 후 일정 기간 재발동 금지
-- **파라미터 최적화**: Grid Search / Random Search로 최적 파라미터 탐색
+- **파라미터 최적화** (개발자 모드 전용): Grid Search / Random Search로 최적 파라미터 탐색
   - IS/OS 분리: 과적합 방지를 위한 In-Sample / Out-of-Sample 평가
   - 자동 랭킹: CAGR → Sortino → Sharpe → Cumulative Return 기준
+  - 배포 모드에서는 숨겨짐 (로컬 개발 시에만 사용)
 - **프리셋 저장/불러오기**: 백테스트 설정 저장 및 재사용
 - **Hysteresis/Cooldown 프리셋**: Conservative, Moderate, Aggressive 프리셋 제공
 - **데이터 캐싱**: Yahoo Finance 데이터 자동 캐싱 (TTL 24시간)
@@ -39,36 +39,49 @@ pip install -e .[dev]  # 개발 모드로 설치 (테스트/린트 도구 포함
 ### CLI 사용
 
 ```bash
-ndbt run TQQQ --start 2023-01-01 --end 2023-12-31 --threshold -0.041 --weekly-budget 500 --mode split
+ndbt run TQQQ --start 2023-01-01 --end 2023-12-31 --threshold -0.041 --shares-per-signal 10
 ```
 
 ### Streamlit GUI 사용
 
 ```bash
-streamlit run src/gui_streamlit.py
+streamlit run app/main.py
 ```
 
 ## 프로젝트 구조
 
 ```
-src/
-├── backtest/         # 백테스트 엔진
-│   ├── engine.py     # 백테스트 실행 및 레저 계산
-│   └── metrics.py    # 성능 지표 (CAGR, MDD, Sharpe, Sortino, XIRR)
-├── data/             # 데이터 소스
-│   ├── yfin.py       # Yahoo Finance 데이터 피드
-│   ├── cache.py      # 데이터 캐싱 시스템
-│   └── base.py       # 데이터 피드 인터페이스
-├── strategy/         # 전략 (딥 구매)
-├── optimization/     # 파라미터 최적화
-│   └── grid_search.py  # Grid Search / Random Search 엔진
-├── storage/          # 설정 저장
-│   └── presets.py    # 프리셋 관리
-├── visualization/    # 시각화 유틸리티
-│   └── heatmap.py    # 월별 수익률 히트맵
-├── cli.py            # CLI 인터페이스
-├── gui_streamlit.py  # Streamlit GUI
-└── config.py         # 설정 관리
+cursorpersonalprojects/
+├── app/                          # Streamlit 웹앱
+│   └── main.py                   # Streamlit GUI 메인 파일
+├── src/                          # 핵심 모듈 코드
+│   ├── backtest/                 # 백테스트 엔진
+│   │   ├── engine.py             # 백테스트 실행 및 레저 계산
+│   │   └── metrics.py            # 성능 지표 (CAGR, MDD, Sharpe, Sortino, XIRR)
+│   ├── data/                     # 데이터 소스
+│   │   ├── providers/            # 외부 API 모듈
+│   │   │   ├── alpha_vantage.py  # Alpha Vantage 데이터 피드
+│   │   │   └── yfin.py           # Yahoo Finance 데이터 피드
+│   │   ├── cache.py              # 데이터 캐싱 시스템
+│   │   └── base.py               # 데이터 피드 인터페이스
+│   ├── strategy/                 # 전략 (딥 구매)
+│   ├── optimization/             # 파라미터 최적화
+│   │   └── grid_search.py        # Grid Search / Random Search 엔진
+│   ├── storage/                  # 설정 저장
+│   │   └── presets.py            # 프리셋 관리
+│   ├── visualization/            # 시각화 유틸리티
+│   │   └── heatmap.py            # 월별 수익률 히트맵
+│   ├── cli.py                    # CLI 인터페이스
+│   └── config.py                 # 설정 관리
+├── tests/                        # 테스트 파일
+├── results/                      # 백테스트 결과 CSV 파일
+├── tools/                        # 개발/실험 스크립트
+│   ├── scratch_run.py            # 실험용 스크립트
+│   └── dev_setup.bat             # 개발 환경 설정
+├── pyproject.toml                # 프로젝트 설정 및 의존성
+├── requirements.txt              # 의존성 목록
+├── README.md                     # 프로젝트 문서
+└── SECURITY.md                   # 보안 가이드
 ```
 
 ## 주요 기능 상세 설명
@@ -98,7 +111,16 @@ TP/SL 트리거 시 기준선 리셋 메커니즘:
 
 이를 통해 연속적인 트리거를 방지하고, 각 매도 후 새로운 수익 실행 기회를 제공합니다.
 
-### 파라미터 최적화
+### 개발자 모드
+
+배포 시 리소스 사용을 최소화하기 위해 Optimization과 Leverage Mode는 개발자 모드에서만 사용 가능합니다:
+
+- **배포 모드** (기본값): Optimization/Leverage Mode 탭 숨김, 간소화된 UI
+- **개발자 모드**: 모든 기능 사용 가능
+  - 환경변수 `DEVELOPER_MODE=true` 설정 시 활성화
+  - 로컬 개발 시에만 사용 권장
+
+### 파라미터 최적화 (개발자 모드 전용)
 
 IS/OS 분리 기반 파라미터 최적화:
 
@@ -160,7 +182,7 @@ pytest
 pytest -q
 
 # 특정 테스트 파일 실행
-pytest src/tests/test_engine_minicase.py
+pytest tests/test_engine_minicase.py
 
 # 커버리지 확인 (선택)
 pytest --cov=src --cov-report=term-missing
@@ -186,8 +208,43 @@ ruff check .
 ruff check --fix .
 
 # Mypy 타입 체크 (선택)
-mypy src/
+mypy src/ app/
 ```
+
+## 배포
+
+자세한 배포 가이드는 [배포 문서](docs/deployment.md)를 참조하세요.
+
+### Streamlit Cloud 배포
+
+1. GitHub 저장소에 코드 푸시
+2. [Streamlit Cloud](https://streamlit.io/cloud)에서 새 앱 생성
+3. 앱 경로 설정: `app/main.py`
+4. 환경 변수 설정 (선택):
+   - `DEVELOPER_MODE`: 개발자 모드 활성화 (기본값: false)
+   - `DEBUG_MODE`: 디버그 모드 활성화 (기본값: false)
+   - `CACHE_ENABLED`: 캐시 활성화 (기본값: true)
+   - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: 24)
+
+### 로컬 개발
+
+로컬 개발 시 개발자 모드 활성화:
+
+```bash
+# Windows PowerShell
+$env:DEVELOPER_MODE="true"
+streamlit run app/main.py
+
+# Linux/Mac
+export DEVELOPER_MODE=true
+streamlit run app/main.py
+```
+
+## 문서
+
+- [시작 가이드](docs/getting-started.md) - 설치 및 빠른 시작
+- [배포 가이드](docs/deployment.md) - Streamlit Cloud 배포 방법
+- [보안 가이드](SECURITY.md) - 보안 모범 사례
 
 ## 개발 환경
 

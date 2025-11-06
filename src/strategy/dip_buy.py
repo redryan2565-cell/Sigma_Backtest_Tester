@@ -50,7 +50,10 @@ def allocate_weekly_budget(
     if mode not in ("split", "first_hit"):
         raise ValueError("mode must be 'split' or 'first_hit'")
 
+    # Convert to DatetimeIndex, removing timezone if present to avoid warning
     idx = pd.DatetimeIndex(signals.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
     week_periods = idx.to_period(week_ending)
     alloc = pd.Series(0.0, index=idx)
     carry_pool = 0.0
@@ -111,7 +114,10 @@ def allocate_shares_per_signal(
     if len(signals) != len(prices):
         raise ValueError("signals and prices must have same length")
 
+    # Convert to DatetimeIndex, removing timezone if present to avoid warning
     idx = pd.DatetimeIndex(signals.index)
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
     alloc = pd.Series(0.0, index=idx)
 
     # For each signal day, calculate the total cash needed:

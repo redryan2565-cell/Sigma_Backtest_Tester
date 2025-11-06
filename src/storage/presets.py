@@ -127,9 +127,25 @@ class PresetManager:
             if 'threshold' not in preset_dict:
                 return None, None, None
             
+            # Ensure shares_per_signal is set (budget-based mode no longer supported)
+            # If preset has weekly_budget but no shares_per_signal, skip it
+            if 'shares_per_signal' not in preset_dict or preset_dict['shares_per_signal'] is None:
+                # Try to convert from budget-based preset (if exists)
+                # For now, skip budget-based presets
+                if 'weekly_budget' in preset_dict and preset_dict['weekly_budget'] is not None:
+                    # Budget-based preset - skip it (no longer supported)
+                    return None, None, None
+                # No shares_per_signal and no weekly_budget - invalid preset
+                return None, None, None
+            
             # Ensure enable_tp_sl is boolean
             if 'enable_tp_sl' in preset_dict:
                 preset_dict['enable_tp_sl'] = bool(preset_dict['enable_tp_sl'])
+            
+            # Remove budget-related fields if present (for backward compatibility)
+            preset_dict.pop('weekly_budget', None)
+            preset_dict.pop('mode', None)
+            preset_dict.pop('carryover', None)
             
             params = BacktestParams(**preset_dict)
             return params, start_date, end_date

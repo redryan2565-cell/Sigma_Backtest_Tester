@@ -10,6 +10,7 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
@@ -25,15 +26,33 @@ jobs:
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
       - name: Install dependencies
         run: |
+          python --version
           python -m pip install --upgrade pip setuptools wheel
           pip install -e .[dev]
-          pip list  # 의존성 확인용
+          pip list
+          echo "✅ Dependencies installed successfully"
       - name: Lint
         run: |
+          echo "🔍 Running lint checks..."
           python --version
           ruff --version
-          ruff check . || (echo "Lint failed" && exit 1)
+          echo "📋 Linting all Python files..."
+          ruff check . --output-format=github || (echo "❌ Lint failed" && exit 1)
+          echo "✅ Lint passed"
       - name: Test
         run: |
+          echo "🧪 Running tests..."
+          python --version
           pytest --version
-          pytest -q --maxfail=1 --disable-warnings -v || (echo "Tests failed" && exit 1)
+          echo "📋 Test discovery..."
+          pytest --collect-only -q || true
+          echo "🚀 Running tests with verbose output..."
+          pytest -v --tb=short --disable-warnings -x --maxfail=1 || (echo "❌ Tests failed" && exit 1)
+          echo "✅ Tests passed"
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint: ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY

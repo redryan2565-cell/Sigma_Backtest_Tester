@@ -6,8 +6,8 @@ from typing import Dict, Any
 import pandas as pd
 import requests
 
-from ..config import get_settings
-from .base import PriceFeed
+from ...config import get_settings
+from ...data.base import PriceFeed
 
 
 class AlphaVantageFeed(PriceFeed):
@@ -21,7 +21,8 @@ class AlphaVantageFeed(PriceFeed):
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or get_settings().alpha_vantage_key
         if not self.api_key:
-            raise RuntimeError("Alpha Vantage API key not configured (ALPHA_VANTAGE_KEY)")
+            # Don't expose API key in error message
+            raise RuntimeError("Alpha Vantage API key not configured. Please set ALPHA_VANTAGE_KEY environment variable.")
 
     def get_daily(self, ticker: str, start: date, end: date) -> pd.DataFrame:
         params: Dict[str, Any] = {
