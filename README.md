@@ -30,7 +30,8 @@
 python -m venv .venv
 .venv\Scripts\activate  # Windows
 # source .venv/bin/activate  # Linux/Mac
-pip install -r requirements.txt
+pip install -e .[dev]  # 개발 모드로 설치 (테스트/린트 도구 포함)
+# 또는 GUI 사용 시: pip install -e .[gui,dev]
 ```
 
 ## 사용법
@@ -85,17 +86,30 @@ src/
 - **매도 비율**: TP/SL 각각 별도 설정 가능 (25%, 50%, 75%, 100%)
 - **반올림 규칙**: 0.5 이상 올림, 최소 1주 보장
 
+#### Baseline Reset 동작 원리
+
+TP/SL 트리거 시 기준선 리셋 메커니즘:
+
+1. **초기 상태**: 첫 매수 시 `ROI_base = NAV`
+2. **트리거 판정**: `NAVReturn_baselined = (NAV - ROI_base) / ROI_base` 계산
+3. **TP/SL 체결**: 조건 충족 시 지정된 비율로 매도 실행
+4. **기준선 리셋**: 체결 직후 `ROI_base = NAV_post_trade`로 업데이트
+5. **재평가**: 다음 트리거는 새로운 기준선 기준으로 평가
+
+이를 통해 연속적인 트리거를 방지하고, 각 매도 후 새로운 수익 실행 기회를 제공합니다.
+
 ### 파라미터 최적화
 
 IS/OS 분리 기반 파라미터 최적화:
 
 - **IS/OS 분리**: 
-  - IS (In-Sample): 최적 파라미터 선택용 학습 기간
-  - OS (Out-of-Sample): 선택된 파라미터 검증용 기간
+  - IS (In-Sample): 최적 파라미터 선택용 학습 기간 (예: 2014-01-01 ~ 2022-12-31)
+  - OS (Out-of-Sample): 선택된 파라미터 검증용 기간 (예: 2023-01-01 ~ 2025-11-06)
 - **과적합 방지**: 
   - IS에서만 최적화 수행
   - OS 성과 확인으로 과튜닝 검증
   - 한 번만 최적화 (OS에서 재튜닝 금지)
+  - 데이터 캐시 공유로 일관성 유지
 - **제약 조건**: 
   - MDD ≥ -60%
   - Trades ≥ 15
@@ -133,3 +147,50 @@ IS/OS 분리 기반 파라미터 최적화:
   - Interactive zoom, pan, hover
 - **Drawdown 차트**: 포트폴리오 하락폭 시각화
 - **월별 수익률 히트맵**: 연도별/월별 수익률 패턴 분석
+
+## 테스트
+
+프로젝트에는 네트워크 의존성 없는 단위 테스트가 포함되어 있습니다:
+
+```bash
+# 모든 테스트 실행
+pytest
+
+# 간단한 출력으로 실행
+pytest -q
+
+# 특정 테스트 파일 실행
+pytest src/tests/test_engine_minicase.py
+
+# 커버리지 확인 (선택)
+pytest --cov=src --cov-report=term-missing
+```
+
+### 테스트 파일
+
+- `test_engine_minicase.py`: 기본 백테스트 로직 검증 (5일 토이 시계열)
+- `test_tp_sl_baseline.py`: TP/SL 기준선 리셋 기능 검증
+- `test_invariants.py`: 회계 항등식 및 모노토닉 검증 (NAV=Equity+CumCF 등)
+- `test_metrics_mdd.py`: MDD 계산 검증 (범위, Edge case)
+- `test_baseline_reset.py`: Baseline reset 종합 테스트
+
+모든 테스트는 네트워크 없이 로컬 DataFrame을 사용하여 실행됩니다.
+
+## 린트 및 타입 체크
+
+```bash
+# Ruff 린트
+ruff check .
+
+# 자동 수정
+ruff check --fix .
+
+# Mypy 타입 체크 (선택)
+mypy src/
+```
+
+## 개발 환경
+
+- **Python**: 3.10, 3.11, 3.12 지원
+- **의존성**: `pyproject.toml`에서 관리
+- **CI/CD**: GitHub Actions에서 Python 3.10/3.11/3.12 매트릭스 테스트 실행

@@ -173,6 +173,8 @@ def main() -> None:
                         fee_rate=0.0005,
                         slippage_rate=0.0005,
                         enable_tp_sl=True,
+                        tp_threshold=0.30,  # Default TP threshold (30%)
+                        sl_threshold=-0.20,  # Default SL threshold (-20%)
                         reset_baseline_after_tp_sl=use_baseline_reset,
                     )
                     
@@ -231,10 +233,23 @@ def main() -> None:
     with st.sidebar:
         if view_mode == "Run Backtest":
             st.header("Purchase Mode")
+            
+            # Get loaded preset to determine initial purchase_mode
+            loaded_params_for_mode = None
+            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+                loaded_params_for_mode = st.session_state['loaded_preset']
+            
+            # Determine initial purchase mode index
+            purchase_mode_index = 0  # Default to Budget-based
+            if loaded_params_for_mode:
+                # If preset has shares_per_signal, use Shares-based mode
+                if loaded_params_for_mode.shares_per_signal is not None:
+                    purchase_mode_index = 1  # Shares-based
+            
             purchase_mode = st.radio(
                 "Purchase Mode",
                 options=["Budget-based", "Shares-based"],
-                index=0,
+                index=purchase_mode_index,
                 help="Budget-based: Buy with fixed weekly budget. Shares-based: Buy fixed number of shares per signal."
             )
 
@@ -247,25 +262,122 @@ def main() -> None:
                 help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)"
             ).strip().upper()
             
-            # Date inputs
+            # Presets section - Load preset first (before inputs)
+            if PRESETS_AVAILABLE and get_preset_manager:
+                preset_manager = get_preset_manager()
+                saved_presets = preset_manager.list_presets()
+                
+                if saved_presets:
+                    st.subheader("📁 Load Saved Preset")
+                    col_load1, col_load2 = st.columns([3, 1])
+                    with col_load1:
+                        selected_preset_name = st.selectbox(
+                            "Select Preset",
+                            options=[""] + saved_presets,
+                            index=0,
+                            help="Load a saved preset configuration",
+                            key="preset_loader"
+                        )
+                    
+                    with col_load2:
+                        if st.button("Load", disabled=not selected_preset_name, key="load_preset_btn"):
+                            loaded_params, loaded_start_date, loaded_end_date = preset_manager.load(selected_preset_name)
+                            if loaded_params:
+                                st.session_state['loaded_preset'] = loaded_params
+                                st.session_state['loaded_preset_name'] = selected_preset_name
+                                # Store dates in session_state and update date inputs
+                                if loaded_start_date:
+                                    st.session_state['loaded_start_date'] = loaded_start_date
+                                    st.session_state['start_date_input'] = loaded_start_date  # Update date_input key
+                                if loaded_end_date:
+                                    st.session_state['loaded_end_date'] = loaded_end_date
+                                    st.session_state['end_date_input'] = loaded_end_date  # Update date_input key
+                                st.success(f"✅ Loaded: {selected_preset_name}")
+                                st.rerun()
+                            else:
+                                st.error("❌ Load failed")
+                    
+                    # Delete button
+                    if selected_preset_name and st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
+                        if preset_manager.delete(selected_preset_name):
+                            st.success(f"✅ Deleted: {selected_preset_name}")
+                            st.rerun()
+                    
+                    # Show loaded preset info and clear button (moved here)
+                    if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+                        st.info(f"💡 Using preset: **{st.session_state.get('loaded_preset_name', 'Unknown')}** - All fields populated from preset. You can modify values as needed.")
+                        if st.button("Clear Loaded Preset", key="clear_preset_btn"):
+                            if 'loaded_preset' in st.session_state:
+                                del st.session_state['loaded_preset']
+                            if 'loaded_preset_name' in st.session_state:
+                                del st.session_state['loaded_preset_name']
+                            if 'loaded_start_date' in st.session_state:
+                                del st.session_state['loaded_start_date']
+                            if 'loaded_end_date' in st.session_state:
+                                del st.session_state['loaded_end_date']
+                            # Reset dates to defaults
+                            st.session_state['start_date_input'] = date(2016, 1, 1)
+                            st.session_state['end_date_input'] = date.today()
+                            st.rerun()
+                    
+                    st.divider()
+                    
+                    # Save Current Settings (moved here)
+                    st.subheader("💾 Save Current Settings")
+                    if not PRESETS_AVAILABLE or get_preset_manager is None:
+                        st.warning("⚠️ Presets functionality not available")
+                    else:
+                        new_preset_name = st.text_input(
+                            "Preset Name",
+                            value="",
+                            help="Enter a name for this preset configuration",
+                            key="save_preset_name"
+                        )
+                        
+                        if st.button("💾 Save Current Settings", disabled=not new_preset_name, key="save_preset_btn"):
+                            # This will be handled after all inputs are collected
+                            # Set a flag in session_state to trigger save after BacktestParams is created
+                            st.session_state['trigger_save_preset'] = True
+                            st.session_state['preset_name_to_save'] = new_preset_name
+                    
+                    st.divider()
+            
+            # Get loaded preset values (if any)
+            loaded_params = None
+            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+                loaded_params = st.session_state['loaded_preset']
+            
+            # Date inputs (with loaded preset dates if available)
+            # Initialize session_state for date inputs if not present
+            # Note: When using key parameter, Streamlit automatically manages session_state
+            # So we only need to set initial values, not pass value parameter
+            if 'start_date_input' not in st.session_state:
+                st.session_state['start_date_input'] = date(2016, 1, 1)
+            if 'end_date_input' not in st.session_state:
+                st.session_state['end_date_input'] = date.today()
+            
             col1, col2 = st.columns(2)
             with col1:
                 start = st.date_input(
                     "Start Date",
-                    value=date(2016, 1, 1),
-                    help="Backtest start date"
+                    help="Backtest start date",
+                    key="start_date_input"
                 )
             with col2:
                 end = st.date_input(
                     "End Date",
-                    value=date.today(),
-                    help="Backtest end date"
+                    help="Backtest end date",
+                    key="end_date_input"
                 )
             
             # Threshold input
+            threshold_value = None
+            if loaded_params:
+                threshold_value = loaded_params.threshold * 100.0 if loaded_params.threshold else None
+            
             threshold = st.number_input(
                 "Threshold (%)",
-                value=None,
+                value=threshold_value,
                 step=0.1,
                 format="%0.1f",
                 help="Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1% drop)"
@@ -273,29 +385,48 @@ def main() -> None:
             
             # Conditional inputs based on purchase mode
             if purchase_mode == "Budget-based":
+                weekly_budget_value = None
+                mode_value = None
+                carryover_value = True
+                if loaded_params:
+                    weekly_budget_value = loaded_params.weekly_budget
+                    mode_value = loaded_params.mode
+                    carryover_value = loaded_params.carryover if loaded_params.carryover is not None else True
+                
                 weekly_budget = st.number_input(
                     "Weekly Budget",
-                    value=500.0,
+                    value=weekly_budget_value if weekly_budget_value is not None else 500.0,
                     step=50.0,
                     min_value=0.01,
                     help="Amount to invest per week (in currency units)"
                 )
+                mode_options = ["split", "first_hit"]
+                mode_index = 0
+                if loaded_params and loaded_params.mode:
+                    try:
+                        mode_index = mode_options.index(loaded_params.mode.value if hasattr(loaded_params.mode, 'value') else str(loaded_params.mode))
+                    except (ValueError, AttributeError):
+                        mode_index = 0
                 mode = st.selectbox(
                     "Allocation Mode",
-                    options=["split", "first_hit"],
-                    index=0,
+                    options=mode_options,
+                    index=mode_index,
                     help="split: Divide budget equally among signal days. first_hit: Spend entire budget on first signal."
                 )
                 carryover = st.checkbox(
                     "Carryover",
-                    value=True,
+                    value=carryover_value,
                     help="Carry unused weekly budget to next week"
                 )
                 shares_per_signal = None
             else:  # Shares-based
+                shares_per_signal_value = None
+                if loaded_params:
+                    shares_per_signal_value = loaded_params.shares_per_signal
+                
                 shares_per_signal = st.number_input(
                     "Shares per Signal",
-                    value=10.0,
+                    value=shares_per_signal_value if shares_per_signal_value is not None else 10.0,
                     step=1.0,
                     min_value=0.01,
                     help="Number of shares to buy each time a signal occurs"
@@ -305,11 +436,17 @@ def main() -> None:
                 carryover = None
             
             # Fee and slippage
+            fee_rate_value = None
+            slippage_rate_value = None
+            if loaded_params:
+                fee_rate_value = loaded_params.fee_rate * 100.0 if loaded_params.fee_rate else None
+                slippage_rate_value = loaded_params.slippage_rate * 100.0 if loaded_params.slippage_rate else None
+            
             col3, col4 = st.columns(2)
             with col3:
                 fee_rate = st.number_input(
                     "Fee Rate (%)",
-                    value=None,
+                    value=fee_rate_value,
                     step=0.01,
                     format="%0.2f",
                     help="Trading fee rate as percentage (e.g., 0.05 for 0.05%)"
@@ -317,7 +454,7 @@ def main() -> None:
             with col4:
                 slippage_rate = st.number_input(
                     "Slippage Rate (%)",
-                    value=None,
+                    value=slippage_rate_value,
                     step=0.01,
                     format="%0.2f",
                     help="Price slippage assumption as percentage (e.g., 0.05 for 0.05%)"
@@ -325,9 +462,13 @@ def main() -> None:
             
             # Take-Profit / Stop-Loss section
             st.header("Take-Profit / Stop-Loss")
+            enable_tp_sl_value = False
+            if loaded_params:
+                enable_tp_sl_value = loaded_params.enable_tp_sl
+            
             enable_tp_sl = st.checkbox(
                 "Enable TP/SL",
-                value=False,
+                value=enable_tp_sl_value,
                 help="Enable portfolio-level take-profit and stop-loss triggers"
             )
             
@@ -341,32 +482,57 @@ def main() -> None:
             tp_cooldown_days = 0
             sl_cooldown_days = 0
             
+            if loaded_params and loaded_params.enable_tp_sl:
+                tp_threshold = (loaded_params.tp_threshold * 100.0) if loaded_params.tp_threshold else None
+                sl_threshold = (loaded_params.sl_threshold * 100.0) if loaded_params.sl_threshold else None
+                tp_sell_percentage = loaded_params.tp_sell_percentage
+                sl_sell_percentage = loaded_params.sl_sell_percentage
+                reset_baseline_after_tp_sl = loaded_params.reset_baseline_after_tp_sl
+                tp_hysteresis = loaded_params.tp_hysteresis * 100.0
+                sl_hysteresis = loaded_params.sl_hysteresis * 100.0
+                tp_cooldown_days = loaded_params.tp_cooldown_days
+                sl_cooldown_days = loaded_params.sl_cooldown_days
+            
             if enable_tp_sl:
                 tp_threshold = st.number_input(
                     "Take-Profit Threshold (%)",
-                    value=None,
+                    value=tp_threshold,
                     step=1.0,
                     format="%0.1f",
                     help="Trigger take-profit at this gain percentage (e.g., 30 for 30%)"
                 )
                 sl_threshold = st.number_input(
                     "Stop-Loss Threshold (%)",
-                    value=None,
+                    value=sl_threshold,
                     step=1.0,
                     format="%0.1f",
                     help="Trigger stop-loss at this loss percentage (e.g., -25 for -25%)"
                 )
+                
+                # TP/SL Sell Percentage selectbox index calculation
+                tp_sell_percentage_index = 3  # Default to 100%
+                if loaded_params:
+                    tp_pct_100 = int(loaded_params.tp_sell_percentage * 100)
+                    if tp_pct_100 in [25, 50, 75, 100]:
+                        tp_sell_percentage_index = [25, 50, 75, 100].index(tp_pct_100)
+                
+                sl_sell_percentage_index = 3  # Default to 100%
+                if loaded_params:
+                    sl_pct_100 = int(loaded_params.sl_sell_percentage * 100)
+                    if sl_pct_100 in [25, 50, 75, 100]:
+                        sl_sell_percentage_index = [25, 50, 75, 100].index(sl_pct_100)
+                
                 tp_sell_percentage = st.selectbox(
                     "TP Sell Percentage",
                     options=[25, 50, 75, 100],
-                    index=3,
+                    index=tp_sell_percentage_index,
                     format_func=lambda x: f"{x}%",
                     help="Percentage of shares to sell when Take-Profit triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
                 ) / 100.0
                 sl_sell_percentage = st.selectbox(
                     "SL Sell Percentage",
                     options=[25, 50, 75, 100],
-                    index=3,
+                    index=sl_sell_percentage_index,
                     format_func=lambda x: f"{x}%",
                     help="Percentage of shares to sell when Stop-Loss triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
                 ) / 100.0
@@ -375,7 +541,7 @@ def main() -> None:
                 st.subheader("Baseline Reset Options")
                 reset_baseline_after_tp_sl = st.checkbox(
                     "Reset baseline after TP/SL",
-                    value=True,
+                    value=reset_baseline_after_tp_sl,
                     help="Reset ROI baseline after TP/SL trigger to prevent consecutive triggers. Recommended: ON."
                 )
                 
@@ -416,24 +582,43 @@ def main() -> None:
                 
                 # Hysteresis options
                 st.subheader("Hysteresis (Optional)")
+                
+                # Add expandable info section
+                with st.expander("ℹ️ Hysteresis란 무엇인가요?", expanded=False):
+                    st.markdown("""
+                    **Hysteresis(히스테리시스)**는 TP/SL 트리거 후 즉시 재트리거되는 것을 방지하는 기능입니다.
+                    
+                    **TP Hysteresis 예시:**
+                    - TP 임계값이 +30%이고 Hysteresis가 2.5%인 경우
+                    - TP 트리거 후, 수익률이 (30% - 2.5%) = 27.5% 이하로 떨어져야 다시 TP가 활성화됩니다
+                    - 이렇게 하면 작은 변동으로 인한 반복적인 TP 트리거를 방지할 수 있습니다
+                    
+                    **SL Hysteresis 예시:**
+                    - SL 임계값이 -20%이고 Hysteresis가 1.5%인 경우
+                    - SL 트리거 후, 수익률이 (-20% + 1.5%) = -18.5% 이상으로 올라가야 다시 SL이 활성화됩니다
+                    - 이렇게 하면 작은 반등으로 인한 반복적인 SL 트리거를 방지할 수 있습니다
+                    """)
+                
                 col_h1, col_h2 = st.columns(2)
                 with col_h1:
+                    tp_hysteresis_input_value = preset_tp_hysteresis if use_preset and preset_tp_hysteresis is not None else tp_hysteresis
                     tp_hysteresis = st.number_input(
                         "TP Hysteresis (%)",
-                        value=preset_tp_hysteresis if use_preset and preset_tp_hysteresis is not None else 0.0,
+                        value=tp_hysteresis_input_value,
                         min_value=0.0,
-                        step=1.0,
+                        step=0.5,
                         format="%0.1f",
-                        help="TP hysteresis percentage. After TP triggers, require return to drop below (threshold - hysteresis) before re-arming. Default: 0 (disabled)."
+                        help="TP 트리거 후 재활성화를 위해 수익률이 (TP 임계값 - Hysteresis) 이하로 떨어져야 합니다. 예: TP 30%, Hysteresis 2.5% → 27.5% 이하로 떨어져야 재활성화. 기본값: 0 (비활성화)"
                     )
                 with col_h2:
+                    sl_hysteresis_input_value = preset_sl_hysteresis if use_preset and preset_sl_hysteresis is not None else sl_hysteresis
                     sl_hysteresis = st.number_input(
                         "SL Hysteresis (%)",
-                        value=preset_sl_hysteresis if use_preset and preset_sl_hysteresis is not None else 0.0,
+                        value=sl_hysteresis_input_value,
                         min_value=0.0,
-                        step=1.0,
+                        step=0.5,
                         format="%0.1f",
-                        help="SL hysteresis percentage. After SL triggers, require return to rise above (threshold + hysteresis) before re-arming. Default: 0 (disabled)."
+                        help="SL 트리거 후 재활성화를 위해 수익률이 (SL 임계값 + Hysteresis) 이상으로 올라가야 합니다. 예: SL -20%, Hysteresis 1.5% → -18.5% 이상으로 올라가야 재활성화. 기본값: 0 (비활성화)"
                     )
                 
                 # Convert percentage to decimal for BacktestParams
@@ -442,79 +627,55 @@ def main() -> None:
                 
                 # Cooldown options
                 st.subheader("Cooldown (Optional)")
+                
+                # Add expandable info section
+                with st.expander("ℹ️ Cooldown이란 무엇인가요?", expanded=False):
+                    st.markdown("""
+                    **Cooldown(쿨다운)**은 TP/SL 트리거 후 일정 기간 동안 같은 종류의 트리거를 비활성화하는 기능입니다.
+                    
+                    **TP Cooldown 예시:**
+                    - TP Cooldown이 3일인 경우
+                    - TP 트리거 후 3일 동안은 TP 조건을 만족해도 트리거되지 않습니다
+                    - 이렇게 하면 짧은 시간 내 반복적인 TP 트리거를 방지할 수 있습니다
+                    
+                    **SL Cooldown 예시:**
+                    - SL Cooldown이 5일인 경우
+                    - SL 트리거 후 5일 동안은 SL 조건을 만족해도 트리거되지 않습니다
+                    - 이렇게 하면 급격한 하락 후 즉시 다시 SL이 트리거되는 것을 방지할 수 있습니다
+                    
+                    **Hysteresis vs Cooldown:**
+                    - **Hysteresis**: 수익률 기준으로 재활성화 조건을 설정 (예: 2.5% 더 떨어져야 재활성화)
+                    - **Cooldown**: 시간 기준으로 재활성화 조건을 설정 (예: 3일 후에만 재활성화)
+                    - 두 기능을 함께 사용하면 더욱 안정적인 트리거 제어가 가능합니다
+                    """)
+                
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
+                    tp_cooldown_input_value = preset_tp_cooldown if use_preset and preset_tp_cooldown is not None else tp_cooldown_days
                     tp_cooldown_days = st.number_input(
                         "TP Cooldown (days)",
-                        value=preset_tp_cooldown if use_preset and preset_tp_cooldown is not None else 0,
+                        value=tp_cooldown_input_value,
                         min_value=0,
                         step=1,
                         format="%d",
-                        help="Number of days to wait before allowing another TP trigger. Default: 0 (disabled)."
+                        help="TP 트리거 후 이 기간 동안은 TP 조건을 만족해도 트리거되지 않습니다. 예: 3일 설정 시 TP 트리거 후 3일간 TP 비활성화. 기본값: 0 (비활성화)"
                     )
                 with col_c2:
+                    sl_cooldown_input_value = preset_sl_cooldown if use_preset and preset_sl_cooldown is not None else sl_cooldown_days
                     sl_cooldown_days = st.number_input(
                         "SL Cooldown (days)",
-                        value=preset_sl_cooldown if use_preset and preset_sl_cooldown is not None else 0,
+                        value=sl_cooldown_input_value,
                         min_value=0,
                         step=1,
                         format="%d",
-                        help="Number of days to wait before allowing another SL trigger. Default: 0 (disabled)."
+                        help="SL 트리거 후 이 기간 동안은 SL 조건을 만족해도 트리거되지 않습니다. 예: 5일 설정 시 SL 트리거 후 5일간 SL 비활성화. 기본값: 0 (비활성화)"
                     )
             
-            # Presets section
-            st.header("Presets")
-            if not PRESETS_AVAILABLE or get_preset_manager is None:
-                st.warning("⚠️ Presets functionality not available")
-                saved_presets = []
-            else:
-                preset_manager = get_preset_manager()
-                saved_presets = preset_manager.list_presets()
+            run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
             
-            # Load preset dropdown
-            if saved_presets:
-                selected_preset_name = st.selectbox(
-                    "Load Preset",
-                    options=[""] + saved_presets,
-                    index=0,
-                    help="Load a saved preset configuration"
-                )
-                
-                if selected_preset_name:
-                    if PRESETS_AVAILABLE and get_preset_manager:
-                        loaded_params = preset_manager.load(selected_preset_name)
-                        if loaded_params:
-                            st.info(f"📂 Loaded preset: {selected_preset_name}")
-                            st.session_state['loaded_preset'] = loaded_params
-                            st.session_state['loaded_preset_name'] = selected_preset_name
-                        else:
-                            st.error(f"❌ Failed to load preset: {selected_preset_name}")
-                    else:
-                        st.error("❌ Presets functionality not available")
-                
-                # Delete preset button
-                if st.button("🗑️ Delete Selected Preset", disabled=not selected_preset_name):
-                    if PRESETS_AVAILABLE and get_preset_manager:
-                        preset_manager = get_preset_manager()
-                        if preset_manager.delete(selected_preset_name):
-                            st.success(f"✅ Deleted preset: {selected_preset_name}")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Failed to delete preset: {selected_preset_name}")
-                    else:
-                        st.error("❌ Presets functionality not available")
-            else:
-                st.info("No saved presets. Save current settings to create one.")
-            
-            # Save preset
-            st.subheader("Save Current Settings")
-            new_preset_name = st.text_input(
-                "Preset Name",
-                value="",
-                help="Enter a name for this preset configuration"
-            )
-            
-            if st.button("💾 Save Current Settings", disabled=not new_preset_name):
+            # Handle Save Current Settings button (if clicked)
+            # This needs to happen after all inputs are collected but before backtest runs
+            if st.session_state.get('trigger_save_preset', False) and 'preset_name_to_save' in st.session_state:
                 try:
                     # Build BacktestParams from current inputs
                     save_params = BacktestParams(
@@ -538,22 +699,26 @@ def main() -> None:
                     )
                     if PRESETS_AVAILABLE and get_preset_manager:
                         preset_manager = get_preset_manager()
-                        preset_manager.save(new_preset_name, save_params)
-                        st.success(f"✅ Saved preset: {new_preset_name}")
+                        preset_manager.save(
+                            st.session_state['preset_name_to_save'],
+                            save_params,
+                            start_date=start,
+                            end_date=end
+                        )
+                        st.success(f"✅ Saved preset: {st.session_state['preset_name_to_save']}")
+                        # Clear the trigger flags
+                        del st.session_state['trigger_save_preset']
+                        del st.session_state['preset_name_to_save']
                         st.rerun()
                     else:
                         st.error("❌ Presets functionality not available")
                 except Exception as exc:
                     st.error(f"❌ Failed to save preset: {exc}")
-            
-            # Load preset values into form if preset was selected
-            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
-                loaded_params = st.session_state['loaded_preset']
-                st.info(f"💡 Preset '{st.session_state.get('loaded_preset_name', 'Unknown')}' loaded. Fill form fields manually or use values from preset.")
-                # Note: Streamlit doesn't easily allow programmatic form updates, so we show info
-                # Users need to manually apply values or we implement a more complex state management
-            
-            run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
+                    # Clear the trigger flags even on error
+                    if 'trigger_save_preset' in st.session_state:
+                        del st.session_state['trigger_save_preset']
+                    if 'preset_name_to_save' in st.session_state:
+                        del st.session_state['preset_name_to_save']
             
         else:  # Load CSV mode
             st.header("CSV Settings")
@@ -972,17 +1137,24 @@ def main() -> None:
                 ax.grid(True, alpha=0.3)
                 st.pyplot(fig, clear_figure=True)
 
-        # Monthly Returns Heatmap
+        # Monthly Returns Heatmap (based on Portfolio Return Ratio)
         st.subheader("📊 Advanced Charts")
         if HEATMAP_AVAILABLE and create_monthly_returns_heatmap:
-            heatmap_fig = create_monthly_returns_heatmap(
-                daily["NAV"],
-                title=f"Monthly Returns Heatmap - {ticker}"
-            )
-            if heatmap_fig is not None:
-                st.plotly_chart(heatmap_fig, width='stretch')
+            # Use Portfolio Return Ratio (Equity / PositionCost) instead of NAV
+            # This excludes the effect of new investments and shows actual portfolio performance
+            if "Equity" in daily.columns and "PositionCost" in daily.columns:
+                heatmap_fig = create_monthly_returns_heatmap(
+                    daily["Equity"],
+                    daily["PositionCost"],
+                    title=f"Monthly Returns Heatmap - {ticker} (Portfolio Return Ratio)"
+                )
+                if heatmap_fig is not None:
+                    st.plotly_chart(heatmap_fig, width='stretch')
+                    st.caption("💡 Based on Portfolio Return Ratio (Equity / PositionCost), excluding new investment effects")
+                else:
+                    st.info("Monthly returns heatmap requires valid Equity and PositionCost data.")
             else:
-                st.info("Monthly returns heatmap requires Plotly. Install with: pip install plotly")
+                st.info("Monthly returns heatmap requires Equity and PositionCost columns in daily data.")
         else:
             st.info("Monthly returns heatmap not available. Check that visualization module is installed.")
 

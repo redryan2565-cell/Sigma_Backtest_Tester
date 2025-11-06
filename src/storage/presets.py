@@ -31,10 +31,10 @@ CONSERVATIVE_PRESET = HysteresisCooldownPreset(
 
 MODERATE_PRESET = HysteresisCooldownPreset(
     name="Moderate",
-    tp_hysteresis=0.03,  # 3%
-    sl_hysteresis=0.03,   # 3%
+    tp_hysteresis=0.025,  # 2.5%
+    sl_hysteresis=0.015,   # 1.5%
     tp_cooldown_days=3,
-    sl_cooldown_days=2,
+    sl_cooldown_days=5,
 )
 
 AGGRESSIVE_PRESET = HysteresisCooldownPreset(
@@ -75,43 +75,67 @@ class PresetManager:
         safe_name = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in name)
         return self.presets_dir / f"{safe_name}.json"
 
-    def save(self, name: str, params: BacktestParams) -> None:
+    def save(self, name: str, params: BacktestParams, start_date: date | None = None, end_date: date | None = None) -> None:
         """Save a preset.
         
         Args:
             name: Preset name.
             params: BacktestParams to save.
+            start_date: Optional start date for backtest.
+            end_date: Optional end date for backtest.
         """
         preset_dict = asdict(params)
+        # Add start/end dates if provided
+        if start_date:
+            preset_dict['start_date'] = start_date.isoformat()
+        if end_date:
+            preset_dict['end_date'] = end_date.isoformat()
         preset_path = self._preset_path(name)
         
         with open(preset_path, "w", encoding="utf-8") as f:
             json.dump(preset_dict, f, indent=2, default=str)
 
-    def load(self, name: str) -> Optional[BacktestParams]:
+    def load(self, name: str) -> tuple[Optional[BacktestParams], Optional[date], Optional[date]]:
         """Load a preset.
         
         Args:
             name: Preset name.
             
         Returns:
-            BacktestParams if found, None otherwise.
+            Tuple of (BacktestParams, start_date, end_date). Returns (None, None, None) if not found.
         """
         preset_path = self._preset_path(name)
         
         if not preset_path.exists():
-            return None
+            return None, None, None
             
         try:
             with open(preset_path, "r", encoding="utf-8") as f:
                 preset_dict = json.load(f)
             
-            # Convert string dates back to date objects if needed
-            # BacktestParams doesn't have dates, so this is mainly for future compatibility
+            # Extract start/end dates if present
+            start_date = None
+            end_date = None
+            if 'start_date' in preset_dict:
+                start_date = date.fromisoformat(preset_dict['start_date'])
+                del preset_dict['start_date']  # Remove from dict before creating BacktestParams
+            if 'end_date' in preset_dict:
+                end_date = date.fromisoformat(preset_dict['end_date'])
+                del preset_dict['end_date']  # Remove from dict before creating BacktestParams
             
-            return BacktestParams(**preset_dict)
-        except Exception:
-            return None
+            # Validate required fields before creating BacktestParams
+            if 'threshold' not in preset_dict:
+                return None, None, None
+            
+            # Ensure enable_tp_sl is boolean
+            if 'enable_tp_sl' in preset_dict:
+                preset_dict['enable_tp_sl'] = bool(preset_dict['enable_tp_sl'])
+            
+            params = BacktestParams(**preset_dict)
+            return params, start_date, end_date
+        except (ValueError, TypeError, KeyError) as e:
+            # Return None on validation errors
+            return None, None, None
 
     def list_presets(self) -> List[str]:
         """List all saved preset names.
