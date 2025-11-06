@@ -36,6 +36,31 @@ if Path(__file__).parent.parent.parent.exists():
 
 from src.backtest.engine import BacktestParams, run_backtest
 from src.data.yfin import YFinanceFeed
+try:
+    from src.optimization.grid_search import generate_param_space, run_search
+    OPTIMIZATION_AVAILABLE = True
+except ImportError as e:
+    OPTIMIZATION_AVAILABLE = False
+    OPTIMIZATION_ERROR = str(e)
+    generate_param_space = None
+    run_search = None
+
+try:
+    from src.storage.presets import ALL_PRESETS, get_preset_manager
+    PRESETS_AVAILABLE = True
+except ImportError as e:
+    PRESETS_AVAILABLE = False
+    PRESETS_ERROR = str(e)
+    ALL_PRESETS = {}
+    get_preset_manager = None
+
+try:
+    from src.visualization.heatmap import create_monthly_returns_heatmap
+    HEATMAP_AVAILABLE = True
+except ImportError as e:
+    HEATMAP_AVAILABLE = False
+    HEATMAP_ERROR = str(e)
+    create_monthly_returns_heatmap = None
 
 
 def main() -> None:
@@ -45,16 +70,21 @@ def main() -> None:
     if OPTION_MENU_AVAILABLE:
         selected = option_menu(
             menu_title=None,
-            options=["📊 Backtest", "📁 Load CSV", "ℹ️ About"],
-            icons=["graph-up", "folder", "info-circle"],
+            options=["📊 Backtest", "🔍 Optimization", "📁 Load CSV", "ℹ️ About"],
+            icons=["graph-up", "search", "folder", "info-circle"],
             menu_icon="cast",
             default_index=0,
             orientation="horizontal",
         )
-        view_mode = "Run Backtest" if selected == "📊 Backtest" else ("Load CSV" if selected == "📁 Load CSV" else "About")
+        view_mode = (
+            "Run Backtest" if selected == "📊 Backtest"
+            else "Optimization" if selected == "🔍 Optimization"
+            else "Load CSV" if selected == "📁 Load CSV"
+            else "About"
+        )
     else:
         st.title("📈 Normal Dip Backtest")
-        view_mode = st.radio("Mode", options=["Run Backtest", "Load CSV", "About"], horizontal=True)
+        view_mode = st.radio("Mode", options=["Run Backtest", "Optimization", "Load CSV", "About"], horizontal=True)
 
     # About page
     if view_mode == "About":
@@ -85,6 +115,116 @@ def main() -> None:
             st.info("**AgGrid Tables**\n\nSort, filter, and export data")
         with col3:
             st.info("**Auto CSV Save**\n\nResults automatically saved")
+        
+        return
+
+    # Optimization page
+    if view_mode == "Optimization":
+        if not OPTIMIZATION_AVAILABLE:
+            st.error(f"❌ Optimization module not available: {OPTIMIZATION_ERROR}")
+            st.info("Please check that all optimization dependencies are installed.")
+            return
+        
+        st.header("🔍 Parameter Optimization")
+        st.info("""
+        **Grid Search / Random Search Optimization**
+        
+        This tool helps find optimal parameter combinations using IS/OS split methodology.
+        - **IS (In-Sample)**: Training period for parameter selection
+        - **OS (Out-of-Sample)**: Validation period to test robustness
+        
+        **Constraints**: MDD ≥ -60%, Trades ≥ 15, HitDays ≥ 15
+        **Ranking**: CAGR → Sortino → Sharpe → Cumulative Return
+        """)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            opt_ticker = st.text_input("Ticker", value="TQQQ", key="opt_ticker").strip().upper()
+            search_mode = st.radio("Search Mode", options=["Grid", "Random"], index=0, key="search_mode")
+            random_samples = st.number_input("Random Samples", value=100, min_value=10, max_value=1000, step=10, disabled=(search_mode == "Grid"), key="random_samples")
+        with col2:
+            st.subheader("Date Ranges")
+            is_start = st.date_input("IS Start", value=date(2014, 1, 1), key="is_start")
+            is_end = st.date_input("IS End", value=date(2022, 12, 31), key="is_end")
+            os_start = st.date_input("OS Start", value=date(2023, 1, 1), key="os_start")
+            os_end = st.date_input("OS End", value=date.today(), key="os_end")
+        
+        use_baseline_reset = st.checkbox("Use baseline reset TP/SL", value=True, key="use_baseline_reset")
+        shares_per_signal = st.number_input("Shares per Signal", value=10.0, min_value=0.01, step=1.0, key="opt_shares")
+        
+        if st.button("🚀 Run Optimization", type="primary"):
+            with st.spinner("📡 Fetching data..."):
+                try:
+                    feed = YFinanceFeed()
+                    # Fetch full range
+                    full_start = min(is_start, os_start)
+                    full_end = max(is_end, os_end)
+                    prices = feed.get_daily(opt_ticker, full_start, full_end)
+                    st.success(f"✅ Loaded {len(prices)} days of data")
+                except Exception as exc:
+                    st.error(f"❌ Data fetch failed: {exc}")
+                    return
+            
+            with st.spinner("🔍 Running optimization..."):
+                try:
+                    base_params = BacktestParams(
+                        threshold=-0.04,
+                        shares_per_signal=shares_per_signal,
+                        fee_rate=0.0005,
+                        slippage_rate=0.0005,
+                        enable_tp_sl=True,
+                        reset_baseline_after_tp_sl=use_baseline_reset,
+                    )
+                    
+                    param_space = generate_param_space(
+                        mode=search_mode.lower(),
+                        seed=42,
+                        budget_n=random_samples,
+                        base_params=base_params,
+                    )
+                    
+                    split = {
+                        "is": (is_start, is_end),
+                        "os": (os_start, os_end),
+                    }
+                    
+                    summary_df, best_params = run_search(param_space, prices, split)
+                    
+                    if best_params is None:
+                        st.warning("⚠️ No valid parameters found (all failed constraints)")
+                        return
+                    
+                    st.success("✅ Optimization completed!")
+                    
+                    # Show top 10 IS results
+                    st.subheader("📊 Top 10 IS Results")
+                    top_is = summary_df.nlargest(10, "IS_CAGR")
+                    display_cols = ["threshold", "tp_threshold", "sl_threshold", "tp_sell", "sl_sell",
+                                   "IS_CAGR", "IS_MDD", "IS_Sortino", "IS_Trades", "IS_HitDays"]
+                    st.dataframe(top_is[display_cols], use_container_width=True)
+                    
+                    # Show best params OS results
+                    st.subheader("🎯 Best Parameters - OS Performance")
+                    best_row = summary_df[
+                        (summary_df["threshold"] == best_params.threshold * 100) &
+                        (summary_df["tp_threshold"] == (best_params.tp_threshold * 100 if best_params.tp_threshold else None)) &
+                        (summary_df["sl_threshold"] == (best_params.sl_threshold * 100 if best_params.sl_threshold else None))
+                    ].iloc[0] if len(summary_df) > 0 else None
+                    
+                    if best_row is not None:
+                        os_cols = ["OS_CAGR", "OS_MDD", "OS_Sortino", "OS_Sharpe", "OS_CumulativeReturn", "OS_Trades", "OS_HitDays"]
+                        st.dataframe(best_row[os_cols].to_frame().T, use_container_width=True)
+                    
+                    # Use Best Params button
+                    if st.button("📋 Use Best Parameters"):
+                        st.session_state['best_params'] = best_params
+                        st.success("✅ Best parameters saved. Go to Backtest tab to use them.")
+                        
+                except Exception as exc:
+                    st.error(f"❌ Optimization failed: {exc}")
+                    with st.expander("Technical Details"):
+                        import traceback
+                        st.code(traceback.format_exc())
         
         return
 
@@ -239,13 +379,48 @@ def main() -> None:
                     help="Reset ROI baseline after TP/SL trigger to prevent consecutive triggers. Recommended: ON."
                 )
                 
+                # Hysteresis/Cooldown Presets
+                st.subheader("Hysteresis & Cooldown Presets")
+                use_preset = st.checkbox(
+                    "Use Preset Values",
+                    value=False,
+                    help="Apply preset values for hysteresis and cooldown parameters"
+                )
+                
+                preset_type = None
+                if use_preset:
+                    if PRESETS_AVAILABLE and ALL_PRESETS:
+                        preset_type = st.selectbox(
+                            "Preset Type",
+                            options=list(ALL_PRESETS.keys()),
+                            index=1,  # Default to Moderate
+                            help="Select a preset configuration for hysteresis and cooldown values"
+                        )
+                        preset = ALL_PRESETS[preset_type]
+                        # Auto-fill preset values (user can still override)
+                        preset_tp_hysteresis = preset.tp_hysteresis * 100  # Convert to percentage
+                        preset_sl_hysteresis = preset.sl_hysteresis * 100
+                        preset_tp_cooldown = preset.tp_cooldown_days
+                        preset_sl_cooldown = preset.sl_cooldown_days
+                    else:
+                        st.warning("⚠️ Presets not available")
+                        preset_tp_hysteresis = None
+                        preset_sl_hysteresis = None
+                        preset_tp_cooldown = None
+                        preset_sl_cooldown = None
+                else:
+                    preset_tp_hysteresis = None
+                    preset_sl_hysteresis = None
+                    preset_tp_cooldown = None
+                    preset_sl_cooldown = None
+                
                 # Hysteresis options
                 st.subheader("Hysteresis (Optional)")
                 col_h1, col_h2 = st.columns(2)
                 with col_h1:
                     tp_hysteresis = st.number_input(
                         "TP Hysteresis (%)",
-                        value=0.0,
+                        value=preset_tp_hysteresis if use_preset and preset_tp_hysteresis is not None else 0.0,
                         min_value=0.0,
                         step=1.0,
                         format="%0.1f",
@@ -254,7 +429,7 @@ def main() -> None:
                 with col_h2:
                     sl_hysteresis = st.number_input(
                         "SL Hysteresis (%)",
-                        value=0.0,
+                        value=preset_sl_hysteresis if use_preset and preset_sl_hysteresis is not None else 0.0,
                         min_value=0.0,
                         step=1.0,
                         format="%0.1f",
@@ -271,7 +446,7 @@ def main() -> None:
                 with col_c1:
                     tp_cooldown_days = st.number_input(
                         "TP Cooldown (days)",
-                        value=0,
+                        value=preset_tp_cooldown if use_preset and preset_tp_cooldown is not None else 0,
                         min_value=0,
                         step=1,
                         format="%d",
@@ -280,12 +455,103 @@ def main() -> None:
                 with col_c2:
                     sl_cooldown_days = st.number_input(
                         "SL Cooldown (days)",
-                        value=0,
+                        value=preset_sl_cooldown if use_preset and preset_sl_cooldown is not None else 0,
                         min_value=0,
                         step=1,
                         format="%d",
                         help="Number of days to wait before allowing another SL trigger. Default: 0 (disabled)."
                     )
+            
+            # Presets section
+            st.header("Presets")
+            if not PRESETS_AVAILABLE or get_preset_manager is None:
+                st.warning("⚠️ Presets functionality not available")
+                saved_presets = []
+            else:
+                preset_manager = get_preset_manager()
+                saved_presets = preset_manager.list_presets()
+            
+            # Load preset dropdown
+            if saved_presets:
+                selected_preset_name = st.selectbox(
+                    "Load Preset",
+                    options=[""] + saved_presets,
+                    index=0,
+                    help="Load a saved preset configuration"
+                )
+                
+                if selected_preset_name:
+                    if PRESETS_AVAILABLE and get_preset_manager:
+                        loaded_params = preset_manager.load(selected_preset_name)
+                        if loaded_params:
+                            st.info(f"📂 Loaded preset: {selected_preset_name}")
+                            st.session_state['loaded_preset'] = loaded_params
+                            st.session_state['loaded_preset_name'] = selected_preset_name
+                        else:
+                            st.error(f"❌ Failed to load preset: {selected_preset_name}")
+                    else:
+                        st.error("❌ Presets functionality not available")
+                
+                # Delete preset button
+                if st.button("🗑️ Delete Selected Preset", disabled=not selected_preset_name):
+                    if PRESETS_AVAILABLE and get_preset_manager:
+                        preset_manager = get_preset_manager()
+                        if preset_manager.delete(selected_preset_name):
+                            st.success(f"✅ Deleted preset: {selected_preset_name}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Failed to delete preset: {selected_preset_name}")
+                    else:
+                        st.error("❌ Presets functionality not available")
+            else:
+                st.info("No saved presets. Save current settings to create one.")
+            
+            # Save preset
+            st.subheader("Save Current Settings")
+            new_preset_name = st.text_input(
+                "Preset Name",
+                value="",
+                help="Enter a name for this preset configuration"
+            )
+            
+            if st.button("💾 Save Current Settings", disabled=not new_preset_name):
+                try:
+                    # Build BacktestParams from current inputs
+                    save_params = BacktestParams(
+                        threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
+                        weekly_budget=float(weekly_budget) if weekly_budget else None,
+                        mode=mode,  # type: ignore[arg-type]
+                        carryover=carryover,
+                        shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
+                        fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0005,
+                        slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0005,
+                        enable_tp_sl=enable_tp_sl,
+                        tp_threshold=float(tp_threshold) / 100.0 if enable_tp_sl and tp_threshold is not None else None,
+                        sl_threshold=float(sl_threshold) / 100.0 if enable_tp_sl and sl_threshold is not None else None,
+                        tp_sell_percentage=tp_sell_percentage,
+                        sl_sell_percentage=sl_sell_percentage,
+                        reset_baseline_after_tp_sl=reset_baseline_after_tp_sl,
+                        tp_hysteresis=tp_hysteresis,
+                        sl_hysteresis=sl_hysteresis,
+                        tp_cooldown_days=tp_cooldown_days,
+                        sl_cooldown_days=sl_cooldown_days,
+                    )
+                    if PRESETS_AVAILABLE and get_preset_manager:
+                        preset_manager = get_preset_manager()
+                        preset_manager.save(new_preset_name, save_params)
+                        st.success(f"✅ Saved preset: {new_preset_name}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Presets functionality not available")
+                except Exception as exc:
+                    st.error(f"❌ Failed to save preset: {exc}")
+            
+            # Load preset values into form if preset was selected
+            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+                loaded_params = st.session_state['loaded_preset']
+                st.info(f"💡 Preset '{st.session_state.get('loaded_preset_name', 'Unknown')}' loaded. Fill form fields manually or use values from preset.")
+                # Note: Streamlit doesn't easily allow programmatic form updates, so we show info
+                # Users need to manually apply values or we implement a more complex state management
             
             run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
             
@@ -705,6 +971,20 @@ def main() -> None:
                 ax.axhline(y=0, color='gray', linestyle='--', linewidth=1)
                 ax.grid(True, alpha=0.3)
                 st.pyplot(fig, clear_figure=True)
+
+        # Monthly Returns Heatmap
+        st.subheader("📊 Advanced Charts")
+        if HEATMAP_AVAILABLE and create_monthly_returns_heatmap:
+            heatmap_fig = create_monthly_returns_heatmap(
+                daily["NAV"],
+                title=f"Monthly Returns Heatmap - {ticker}"
+            )
+            if heatmap_fig is not None:
+                st.plotly_chart(heatmap_fig, width='stretch')
+            else:
+                st.info("Monthly returns heatmap requires Plotly. Install with: pip install plotly")
+        else:
+            st.info("Monthly returns heatmap not available. Check that visualization module is installed.")
 
         # Daily data table
         st.subheader("📋 Daily Data")

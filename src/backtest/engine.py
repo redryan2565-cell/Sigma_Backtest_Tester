@@ -131,6 +131,11 @@ def compute_ledger(
     # Execution price for sells (with slippage deducted)
     px_exec_sell = adj * (1.0 - float(params.slippage_rate))
     
+    # Convert to numpy arrays for faster indexing (performance optimization)
+    adj_arr = adj.values
+    px_exec_buy_arr = px_exec_buy.values
+    px_exec_sell_arr = px_exec_sell.values
+    
     # Determine mode
     is_shares_mode = params.shares_per_signal is not None
     
@@ -182,19 +187,25 @@ def compute_ledger(
     
     # Process each day sequentially
     for i, day in enumerate(idx):
+        # Use array indexing for performance (faster than .loc)
+        adj_price = adj_arr[i]
+        px_exec_buy_price = px_exec_buy_arr[i]
+        px_exec_sell_price = px_exec_sell_arr[i]
+        
         # Process buy logic first
         if is_shares_mode:
             # Shares-based mode
-            if signals.loc[day]:
+            if signals.iloc[i]:  # Use iloc for faster indexing
                 shares_fixed = float(params.shares_per_signal)
                 shares_bought[i] = shares_fixed
-                buy_amt[i] = shares_fixed * px_exec_buy.loc[day]
+                buy_amt[i] = shares_fixed * px_exec_buy_price
                 fee[i] = buy_amt[i] * float(params.fee_rate)
         else:
             # Budget-based mode
-            if allocation.loc[day] > 0:
-                buy_amt[i] = allocation.loc[day]
-                shares_bought[i] = buy_amt[i] / px_exec_buy.loc[day]
+            alloc_val = allocation.iloc[i]  # Use iloc for faster indexing
+            if alloc_val > 0:
+                buy_amt[i] = alloc_val
+                shares_bought[i] = buy_amt[i] / px_exec_buy_price
                 fee[i] = buy_amt[i] * float(params.fee_rate)
         
         # Update state for buys
@@ -208,7 +219,7 @@ def compute_ledger(
         cum_cash_flow += cash_flow[i]
         
         # Calculate current equity and NAV
-        equity = cum_shares * adj.loc[day]
+        equity = cum_shares * adj_price
         cash_balance = cum_invested + cum_cash_flow
         nav = equity + cash_balance
         
@@ -238,10 +249,10 @@ def compute_ledger(
             nav_return_global = 0.0
         
         # Calculate NAVReturn_baselined (for TP/SL trigger evaluation)
-        if roi_base is not None and roi_base > 1e-9:
+        # Only calculate if TP/SL is enabled or if we need it for output
+        nav_return_baselined = 0.0
+        if params.enable_tp_sl and roi_base is not None and roi_base > 1e-9:
             nav_return_baselined = (nav / roi_base) - 1.0
-        else:
-            nav_return_baselined = 0.0
         
         # Calculate NAV Return from investment (for historical reference, same as global)
         nav_return = nav_return_global
@@ -325,9 +336,8 @@ def compute_ledger(
                 
                 if shares_to_sell > 0:
                     # Calculate sell price and proceeds
-                    price_sell = px_exec_sell.loc[day]
-                    sell_price[i] = price_sell
-                    gross_proceeds[i] = float(shares_to_sell) * price_sell
+                    sell_price[i] = px_exec_sell_price
+                    gross_proceeds[i] = float(shares_to_sell) * px_exec_sell_price
                     sell_fee[i] = gross_proceeds[i] * float(params.fee_rate)
                     net_proceeds[i] = gross_proceeds[i] - sell_fee[i]
                     
@@ -357,7 +367,7 @@ def compute_ledger(
                         cum_shares = 0.0
                     
                     # Recalculate equity and NAV after sale
-                    equity = cum_shares * adj.loc[day]
+                    equity = cum_shares * adj_price
                     cash_balance = cum_invested + cum_cash_flow
                     nav = equity + cash_balance
                     
@@ -379,6 +389,9 @@ def compute_ledger(
                     # Reset ROI baseline after TP/SL sale (if enabled)
                     if params.reset_baseline_after_tp_sl:
                         roi_base = nav  # Reset baseline to NAV after trade
+                        # Reset hysteresis states when baseline resets
+                        tp_hysteresis_active = False
+                        sl_hysteresis_active = False
                     
                     # Update last trigger dates for cooldown
                     if tp_triggered[i]:
@@ -417,8 +430,12 @@ def compute_ledger(
         if roi_base is not None:
             roi_base_arr[i] = roi_base
         nav_return_global_arr[i] = nav_return_global
-        if roi_base is not None and roi_base > 1e-9:
+        if params.enable_tp_sl and roi_base is not None and roi_base > 1e-9:
             nav_return_baselined_arr[i] = nav_return_baselined
+        elif roi_base is not None and roi_base > 1e-9:
+            # Calculate even if TP/SL disabled for output consistency
+            nav_return_baselined_arr[i] = (nav / roi_base) - 1.0
+        # else: remains NaN (initialized)
         post_sell_cum_shares_arr[i] = cum_shares
     
     # Calculate drawdown: only compute after first investment
