@@ -41,6 +41,10 @@ jobs:
       - name: Test
         run: |
           echo "🧪 Running tests..."
+          python --version
           pytest --version
-          pytest -v --tb=short --disable-warnings || (echo "❌ Tests failed" && exit 1)
+          echo "📋 Test discovery..."
+          pytest --collect-only -q || true
+          echo "🚀 Running tests with verbose output..."
+          pytest -v --tb=short --disable-warnings -x || (echo "❌ Tests failed" && exit 1)
           echo "✅ Tests passed"
