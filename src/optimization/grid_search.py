@@ -44,11 +44,15 @@ def generate_param_space(
             fee_rate=0.0005,
             slippage_rate=0.0005,
             enable_tp_sl=True,
-            tp_threshold=0.30,
-            sl_threshold=-0.20,
-            tp_sell_percentage=0.5,
-            sl_sell_percentage=1.0,
+            tp_threshold=0.30,  # 30%
+            sl_threshold=-0.20,  # -20%
+            tp_sell_percentage=0.5,  # 50%
+            sl_sell_percentage=1.0,  # 100%
             reset_baseline_after_tp_sl=True,
+            tp_hysteresis=0.0,
+            sl_hysteresis=0.0,
+            tp_cooldown_days=0,
+            sl_cooldown_days=0,
         )
     
     # Parameter ranges
