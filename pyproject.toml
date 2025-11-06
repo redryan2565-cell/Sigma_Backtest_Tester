@@ -20,10 +20,12 @@ dependencies = [
   "python-dotenv>=1.0.0",
   "matplotlib>=3.7.0",
   "scipy>=1.10.0",
+  "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
 gui = [
+  "streamlit>=1.32.0",
   "plotly>=5.18.0",
   "streamlit-aggrid>=0.3.4",
   "streamlit-option-menu>=0.3.12",
@@ -42,6 +44,8 @@ dev = [
   "black>=23.0.0",
   "mypy>=1.5.0",
   "loguru>=0.7.2",
+  "pip-audit>=2.6.0",
+  "safety>=2.3.0",
 ]
 all = [
   "normal-dip-bt[gui,advanced,dev]",
@@ -56,9 +60,8 @@ package-dir = {"src" = "src"}
 
 
 [tool.pytest.ini_options]
-# Note: addopts removed to avoid conflicts with CI
-# CI uses -v flag explicitly, local can use -q if needed
-testpaths = ["src/tests"]
+addopts = "-q"
+testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.black]

@@ -41,25 +41,25 @@ class BacktestParams:
     
     def __post_init__(self):
         """Validate TP/SL parameters."""
-        if self.enable_tp_sl:
-            if self.tp_threshold is None:
-                raise ValueError("tp_threshold must be provided when enable_tp_sl is True")
-            if self.sl_threshold is None:
-                raise ValueError("sl_threshold must be provided when enable_tp_sl is True")
+        # Validate TP parameters if TP is enabled
+        if self.tp_threshold is not None:
             if self.tp_threshold <= 0:
                 raise ValueError("tp_threshold must be positive (e.g., 0.30 for 30%)")
-            if self.sl_threshold >= 0:
-                raise ValueError("sl_threshold must be negative (e.g., -0.25 for -25%)")
             if self.tp_sell_percentage <= 0 or self.tp_sell_percentage > 1.0:
                 raise ValueError("tp_sell_percentage must be between 0 and 1.0 (e.g., 0.25 for 25%)")
-            if self.sl_sell_percentage <= 0 or self.sl_sell_percentage > 1.0:
-                raise ValueError("sl_sell_percentage must be between 0 and 1.0 (e.g., 0.25 for 25%)")
             if self.tp_hysteresis < 0:
                 raise ValueError("tp_hysteresis must be non-negative")
-            if self.sl_hysteresis < 0:
-                raise ValueError("sl_hysteresis must be non-negative")
             if self.tp_cooldown_days < 0:
                 raise ValueError("tp_cooldown_days must be non-negative")
+        
+        # Validate SL parameters if SL is enabled
+        if self.sl_threshold is not None:
+            if self.sl_threshold >= 0:
+                raise ValueError("sl_threshold must be negative (e.g., -0.25 for -25%)")
+            if self.sl_sell_percentage <= 0 or self.sl_sell_percentage > 1.0:
+                raise ValueError("sl_sell_percentage must be between 0 and 1.0 (e.g., 0.25 for 25%)")
+            if self.sl_hysteresis < 0:
+                raise ValueError("sl_hysteresis must be non-negative")
             if self.sl_cooldown_days < 0:
                 raise ValueError("sl_cooldown_days must be non-negative")
 
@@ -67,31 +67,20 @@ class BacktestParams:
 def _compute_allocation(prices: pd.DataFrame, params: BacktestParams) -> pd.Series:
     signals = generate_dip_signals(prices["AdjClose"], params.threshold)
     
-    # Determine which allocation mode to use
-    if params.shares_per_signal is not None:
-        # Shares-based allocation
-        if params.shares_per_signal <= 0:
-            raise ValueError("shares_per_signal must be positive")
-        allocation = allocate_shares_per_signal(
-            signals=signals,
-            shares_per_signal=float(params.shares_per_signal),
-            prices=prices["AdjClose"],
-            slippage_rate=float(params.slippage_rate),
-            fee_rate=float(params.fee_rate),
-        )
-    else:
-        # Budget-based allocation (legacy)
-        if params.weekly_budget is None or params.mode is None or params.carryover is None:
-            raise ValueError(
-                "For budget-based mode, weekly_budget, mode, and carryover must be provided"
-            )
-        allocation = allocate_weekly_budget(
-            signals=signals,
-            weekly_budget=float(params.weekly_budget),
-            mode=params.mode,
-            carryover=params.carryover,
-            week_ending="W-SUN",
-        )
+    # Always use shares-based allocation (budget-based mode removed)
+    if params.shares_per_signal is None:
+        raise ValueError("shares_per_signal must be provided (budget-based mode is no longer supported)")
+    
+    if params.shares_per_signal <= 0:
+        raise ValueError("shares_per_signal must be positive")
+    
+    allocation = allocate_shares_per_signal(
+        signals=signals,
+        shares_per_signal=float(params.shares_per_signal),
+        prices=prices["AdjClose"],
+        slippage_rate=float(params.slippage_rate),
+        fee_rate=float(params.fee_rate),
+    )
     
     allocation = allocation.reindex(prices.index, fill_value=0.0)
     
@@ -111,6 +100,7 @@ def compute_ledger(
     
     Supports Take-Profit and Stop-Loss functionality when enabled.
     Processes days sequentially to handle dynamic sell events.
+    Uses shares-based mode only (budget-based mode removed).
     
     Returns DataFrame with columns:
     DailyRet, Signal, Mode, AdjClose, PxExec, BuyAmt, Fee, SharesBought,
@@ -135,9 +125,11 @@ def compute_ledger(
     adj_arr = adj.values
     px_exec_buy_arr = px_exec_buy.values
     px_exec_sell_arr = px_exec_sell.values
+    signals_arr = signals.values  # Convert signals to numpy array
     
-    # Determine mode
-    is_shares_mode = params.shares_per_signal is not None
+    # Always use shares-based mode (budget-based mode removed)
+    if params.shares_per_signal is None:
+        raise ValueError("shares_per_signal must be provided (budget-based mode is no longer supported)")
     
     # Initialize arrays for all columns
     n = len(idx)
@@ -214,22 +206,13 @@ def compute_ledger(
         # This ensures that TP/SL cannot trigger on the same day as a buy
         shares_bought_today = 0.0
         
-        if is_shares_mode:
-            # Shares-based mode
-            if signals.iloc[i]:  # Use iloc for faster indexing
-                shares_fixed = float(params.shares_per_signal)
-                shares_bought[i] = shares_fixed
-                buy_amt[i] = shares_fixed * px_exec_buy_price
-                fee[i] = buy_amt[i] * float(params.fee_rate)
-                shares_bought_today = shares_fixed
-        else:
-            # Budget-based mode
-            alloc_val = allocation.iloc[i]  # Use iloc for faster indexing
-            if alloc_val > 0:
-                buy_amt[i] = alloc_val
-                shares_bought[i] = buy_amt[i] / px_exec_buy_price
-                fee[i] = buy_amt[i] * float(params.fee_rate)
-                shares_bought_today = shares_bought[i]
+        # Always use shares-based mode (optimized: use numpy array instead of pandas iloc)
+        if signals_arr[i]:  # Use numpy array for faster indexing
+            shares_fixed = float(params.shares_per_signal)
+            shares_bought[i] = shares_fixed
+            buy_amt[i] = shares_fixed * px_exec_buy_price
+            fee[i] = buy_amt[i] * float(params.fee_rate)
+            shares_bought_today = shares_fixed
         
         # Update state for buys
         if shares_bought_today > 0:
@@ -279,8 +262,8 @@ def compute_ledger(
                     weighted_avg_entry_price_arr[i] = weighted_avg_entry_price
                     position_return_arr[i] = position_return
         
-        # Check TP/SL triggers (only if enabled, no buy today, and we have eligible positions)
-        if params.enable_tp_sl and shares_bought_today == 0.0 and has_eligible_position and weighted_avg_entry_price > 1e-9:
+        # Check TP/SL triggers (only if at least one is enabled, no buy today, and we have eligible positions)
+        if (params.tp_threshold is not None or params.sl_threshold is not None) and shares_bought_today == 0.0 and has_eligible_position and weighted_avg_entry_price > 1e-9:
             trigger_fired = False
             
             # Check cooldown periods
@@ -523,7 +506,7 @@ def compute_ledger(
         
         # Calculate NAVReturn_baselined (for output, after all transactions)
         nav_return_baselined = 0.0
-        if params.enable_tp_sl and roi_base is not None and roi_base > 1e-9:
+        if (params.tp_threshold is not None or params.sl_threshold is not None) and roi_base is not None and roi_base > 1e-9:
             nav_return_baselined = (nav / roi_base) - 1.0
         
         # Calculate NAV Return from investment (for historical reference, same as global)
@@ -545,7 +528,7 @@ def compute_ledger(
         if roi_base is not None:
             roi_base_arr[i] = roi_base
         nav_return_global_arr[i] = nav_return_global
-        if params.enable_tp_sl and roi_base is not None and roi_base > 1e-9:
+        if (params.tp_threshold is not None or params.sl_threshold is not None) and roi_base is not None and roi_base > 1e-9:
             nav_return_baselined_arr[i] = nav_return_baselined
         elif roi_base is not None and roi_base > 1e-9:
             # Calculate even if TP/SL disabled for output consistency
@@ -607,7 +590,7 @@ def compute_ledger(
             drawdown.loc[idx[first_invest_date_idx]:] = 0.0
     
     # Mode string
-    mode_str = "shares" if is_shares_mode else (params.mode or "unknown")
+    mode_str = "shares"  # Always use shares-based mode
     
     # Build DataFrame
     ledger = pd.DataFrame({
@@ -992,7 +975,7 @@ def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:
             raise ValueError(f"TP/SL and Buy occurred on same day (should be prevented by Guard Clause): {dates.tolist()}")
         
         # Validate: Cooldown periods - 동일 방향 트리거가 쿨다운 기간 중 발생하지 않았는지 확인
-        if params.enable_tp_sl:
+        if params.tp_threshold is not None or params.sl_threshold is not None:
             # TP cooldown 검증
             if params.tp_cooldown_days > 0:
                 tp_dates = ledger.index[tp_triggered]
@@ -1035,11 +1018,10 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
 
     prices = prices.sort_index().copy()
     
-    # Get allocation (needed for budget-based mode to determine weekly budget splits)
-    # For shares-based mode, allocation is computed but ledger recalculates from scratch
+    # Get allocation (shares-based mode only)
     allocation = _compute_allocation(prices, params)
     
-    # Compute complete ledger (handles both modes correctly)
+    # Compute complete ledger
     ledger = compute_ledger(prices, params, allocation)
     
     idx = ledger.index
@@ -1053,13 +1035,31 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
     # Find first investment date
     first_invest_mask = cum_invested > 0
     if not first_invest_mask.any():
-        # No trades executed
+        # No trades executed - still calculate Benchmark CAGR
+        benchmark_start_date = prices.index[0]
+        benchmark_end_date = prices.index[-1]
+        benchmark_start_price = float(prices["AdjClose"].iloc[0])
+        benchmark_end_price = float(prices["AdjClose"].iloc[-1])
+        
+        if benchmark_start_date == benchmark_end_date:
+            benchmark_cagr = 0.0
+        elif benchmark_start_price <= 0 or benchmark_end_price <= 0:
+            benchmark_cagr = 0.0
+        else:
+            benchmark_days = (benchmark_end_date - benchmark_start_date).days if hasattr(benchmark_end_date, 'days') else (pd.Timestamp(benchmark_end_date) - pd.Timestamp(benchmark_start_date)).days
+            if benchmark_days > 0:
+                benchmark_years = benchmark_days / 365.25
+                benchmark_cagr = (benchmark_end_price / benchmark_start_price) ** (1.0 / benchmark_years) - 1.0
+            else:
+                benchmark_cagr = 0.0
+        
         metrics: Dict[str, float] = {
             "TotalInvested": 0.0,
             "EndingEquity": 0.0,
             "EndingNAV": 0.0,
             "CumulativeReturn": 0.0,
             "CAGR": 0.0,
+            "BenchmarkCAGR": float(benchmark_cagr),
             "MDD": 0.0,
             "Trades": 0.0,
             "HitDays": float(int(signals.sum())),
@@ -1152,6 +1152,28 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
     else:
         cagr_value = 0.0
     
+    # Benchmark CAGR (Buy & Hold): Simple 1-share buy-and-hold strategy
+    # Uses actual first and last dates in the prices DataFrame (may differ from user input due to weekends/holidays)
+    benchmark_start_date = prices.index[0]
+    benchmark_end_date = prices.index[-1]
+    benchmark_start_price = float(prices["AdjClose"].iloc[0])
+    benchmark_end_price = float(prices["AdjClose"].iloc[-1])
+    
+    if benchmark_start_date == benchmark_end_date:
+        # Same date: CAGR = 0
+        benchmark_cagr = 0.0
+    elif benchmark_start_price <= 0 or benchmark_end_price <= 0:
+        # Invalid prices: CAGR = 0
+        benchmark_cagr = 0.0
+    else:
+        benchmark_days = (benchmark_end_date - benchmark_start_date).days if hasattr(benchmark_end_date, 'days') else (pd.Timestamp(benchmark_end_date) - pd.Timestamp(benchmark_start_date)).days
+        if benchmark_days > 0:
+            benchmark_years = benchmark_days / 365.25
+            # CAGR formula: (end_price / start_price) ^ (1 / years) - 1
+            benchmark_cagr = (benchmark_end_price / benchmark_start_price) ** (1.0 / benchmark_years) - 1.0
+        else:
+            benchmark_cagr = 0.0
+    
     # XIRR: only non-zero cash flows
     cash_flows = ledger["CashFlow"]
     nonzero_cf_mask = np.abs(cash_flows) > 1e-10
@@ -1184,6 +1206,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
         "NAV_including_invested": round(ending_nav_including_invested, 6),
         "CumulativeReturn": float(cumulative_return),
         "CAGR": float(cagr_value),
+        "BenchmarkCAGR": float(benchmark_cagr),
         "MDD": float(mdd_value),
         "Trades": float(trades),
         "HitDays": float(hit_days),

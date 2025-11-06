@@ -36,6 +36,7 @@ jobs:
           echo "🔍 Running lint checks..."
           python --version
           ruff --version
+          echo "📋 Linting all Python files..."
           ruff check . --output-format=github || (echo "❌ Lint failed" && exit 1)
           echo "✅ Lint passed"
       - name: Test
@@ -46,5 +47,12 @@ jobs:
           echo "📋 Test discovery..."
           pytest --collect-only -q || true
           echo "🚀 Running tests with verbose output..."
-          pytest -v --tb=short --disable-warnings -x || (echo "❌ Tests failed" && exit 1)
+          pytest -v --tb=short --disable-warnings -x --maxfail=1 || (echo "❌ Tests failed" && exit 1)
           echo "✅ Tests passed"
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Lint: ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Tests: ${{ job.status == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY

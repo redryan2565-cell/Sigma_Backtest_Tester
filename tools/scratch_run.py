@@ -4,7 +4,7 @@ import json
 from datetime import date
 
 from src.backtest.engine import BacktestParams, run_backtest
-from src.data.yfin import YFinanceFeed
+from src.data.providers.yfin import YFinanceFeed
 
 
 def main() -> None:

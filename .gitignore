@@ -1,6 +1,4 @@
-# -------------------------------
 # Python
-# -------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -9,41 +7,58 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.eggs/
 
-# -------------------------------
-# Virtual environments
-# -------------------------------
+# Virtual Environment
 .venv/
 venv/
 ENV/
 env/
 
-# -------------------------------
-# IDE / Editor
-# -------------------------------
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.codex/
+*.sublime-project
+*.sublime-workspace
 
-# -------------------------------
-# Project-specific
-# -------------------------------
-# CSV / 이미지 / 데이터
-*.csv
-*.png
-*.jpg
-*.jpeg
-
-# 비밀 환경변수 / API / 인증키 파일
-.env
-auth.json
+# Streamlit
+# Note: .streamlit/config.toml and .streamlit/secrets.toml.example should be tracked
+# Only ignore actual secrets file
 .streamlit/secrets.toml
+.streamlit/*.toml
+!.streamlit/config.toml
+!.streamlit/secrets.toml.example
 
-# -------------------------------
-# OS / 시스템 파일
-# -------------------------------
+# Cache
+.cache/
+*.cache
+
+# Results (CSV files - optional, uncomment to ignore)
+# results/*.csv
+# !results/.gitkeep
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json

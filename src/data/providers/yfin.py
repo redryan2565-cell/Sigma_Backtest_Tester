@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
 
-from ..config import get_settings
-from .base import PriceFeed
-from .cache import DataCache, get_cache
+from ...config import get_settings
+from ...data.base import PriceFeed
+from ...data.cache import DataCache, get_cache
 
 
 class YFinanceFeed(PriceFeed):
@@ -33,6 +34,15 @@ class YFinanceFeed(PriceFeed):
         # Validate inputs
         if not ticker or not isinstance(ticker, str) or len(ticker.strip()) == 0:
             raise ValueError("Ticker symbol must be a non-empty string")
+        
+        ticker = ticker.strip().upper()
+        
+        # Security: Validate ticker format to prevent injection attacks
+        if len(ticker) > 15:
+            raise ValueError("Ticker symbol is too long (max 15 characters)")
+        if not re.match(r'^[A-Z0-9.\-]+$', ticker):
+            raise ValueError("Ticker symbol contains invalid characters. Only alphanumeric characters, dots, and hyphens are allowed.")
+        
         if start > end:
             raise ValueError(f"Start date ({start}) must be <= end date ({end})")
         
@@ -121,5 +131,66 @@ class YFinanceFeed(PriceFeed):
         self._cache.set(ticker, start, end, out)
 
         return out
+
+    def validate_ticker(self, ticker: str) -> bool:
+        """Validate if a ticker symbol exists and is supported.
+        
+        Args:
+            ticker: Ticker symbol to validate (e.g., 'TQQQ', 'AAPL').
+            
+        Returns:
+            True if ticker exists and is valid, False otherwise.
+        """
+        if not ticker or not isinstance(ticker, str) or len(ticker.strip()) == 0:
+            return False
+        
+        ticker = ticker.strip().upper()
+        
+        # Security: Validate ticker format to prevent injection attacks
+        # Ticker symbols typically contain only alphanumeric characters, dots, and hyphens
+        # Length limit: 1-15 characters (most tickers are 1-5 chars, but some can be longer)
+        if len(ticker) > 15:
+            return False
+        
+        # Only allow alphanumeric, dots, and hyphens
+        # This prevents SQL injection, command injection, path traversal, etc.
+        if not re.match(r'^[A-Z0-9.\-]+$', ticker):
+            return False
+        
+        try:
+            import yfinance as yf
+        except Exception:
+            # If yfinance is not available, cannot validate
+            return False
+        
+        try:
+            import warnings
+            # Suppress yfinance warnings for invalid tickers (404 errors are expected)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                tkr = yf.Ticker(ticker)
+                # Try to get basic info - if ticker doesn't exist, this will fail or return empty
+                info = tkr.info
+            
+            # Check if we got valid info (should have at least 'symbol' key)
+            if not info or len(info) == 0:
+                return False
+            
+            # Check if symbol matches (case-insensitive)
+            symbol = info.get('symbol', '').upper()
+            if symbol != ticker:
+                # Sometimes Yahoo returns different symbol (e.g., for delisted stocks)
+                # Try to get history as additional check
+                try:
+                    hist = tkr.history(period="1d")
+                    if hist is None or hist.empty:
+                        return False
+                except Exception:
+                    return False
+            
+            return True
+        except Exception:
+            # Any exception means ticker is likely invalid
+            return False
 
 
