@@ -72,7 +72,7 @@ def main() -> None:
         ### Parameters
         - **Ticker**: Stock symbol (e.g., TQQQ, AAPL)
         - **Date Range**: Start and end dates for backtest
-        - **Threshold**: Daily return threshold (must be negative, e.g., -0.041 for -4.1%)
+        - **Threshold**: Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1%)
         - **Fee Rate**: Trading fee per transaction
         - **Slippage Rate**: Price impact assumption
         """)
@@ -124,11 +124,11 @@ def main() -> None:
             
             # Threshold input
             threshold = st.number_input(
-                "Threshold (daily return)",
-                value=-0.041,
-                step=0.001,
-                format="%0.6f",
-                help="Daily return threshold (must be negative, e.g., -0.041 for -4.1% drop)"
+                "Threshold (%)",
+                value=None,
+                step=0.1,
+                format="%0.1f",
+                help="Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1% drop)"
             )
             
             # Conditional inputs based on purchase mode
@@ -168,20 +168,124 @@ def main() -> None:
             col3, col4 = st.columns(2)
             with col3:
                 fee_rate = st.number_input(
-                    "Fee Rate",
-                    value=0.0005,
-                    step=0.0001,
-                    format="%0.6f",
-                    help="Trading fee rate (e.g., 0.0005 = 0.05%)"
+                    "Fee Rate (%)",
+                    value=None,
+                    step=0.01,
+                    format="%0.2f",
+                    help="Trading fee rate as percentage (e.g., 0.05 for 0.05%)"
                 )
             with col4:
                 slippage_rate = st.number_input(
-                    "Slippage Rate",
-                    value=0.0005,
-                    step=0.0001,
-                    format="%0.6f",
-                    help="Price slippage assumption (e.g., 0.0005 = 0.05%)"
+                    "Slippage Rate (%)",
+                    value=None,
+                    step=0.01,
+                    format="%0.2f",
+                    help="Price slippage assumption as percentage (e.g., 0.05 for 0.05%)"
                 )
+            
+            # Take-Profit / Stop-Loss section
+            st.header("Take-Profit / Stop-Loss")
+            enable_tp_sl = st.checkbox(
+                "Enable TP/SL",
+                value=False,
+                help="Enable portfolio-level take-profit and stop-loss triggers"
+            )
+            
+            tp_threshold = None
+            sl_threshold = None
+            tp_sell_percentage = 1.0
+            sl_sell_percentage = 1.0
+            reset_baseline_after_tp_sl = True
+            tp_hysteresis = 0.0
+            sl_hysteresis = 0.0
+            tp_cooldown_days = 0
+            sl_cooldown_days = 0
+            
+            if enable_tp_sl:
+                tp_threshold = st.number_input(
+                    "Take-Profit Threshold (%)",
+                    value=None,
+                    step=1.0,
+                    format="%0.1f",
+                    help="Trigger take-profit at this gain percentage (e.g., 30 for 30%)"
+                )
+                sl_threshold = st.number_input(
+                    "Stop-Loss Threshold (%)",
+                    value=None,
+                    step=1.0,
+                    format="%0.1f",
+                    help="Trigger stop-loss at this loss percentage (e.g., -25 for -25%)"
+                )
+                tp_sell_percentage = st.selectbox(
+                    "TP Sell Percentage",
+                    options=[25, 50, 75, 100],
+                    index=3,
+                    format_func=lambda x: f"{x}%",
+                    help="Percentage of shares to sell when Take-Profit triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
+                ) / 100.0
+                sl_sell_percentage = st.selectbox(
+                    "SL Sell Percentage",
+                    options=[25, 50, 75, 100],
+                    index=3,
+                    format_func=lambda x: f"{x}%",
+                    help="Percentage of shares to sell when Stop-Loss triggers. Rounding: 0.5 and above rounds up, minimum 1 share if rounding yields 0."
+                ) / 100.0
+                
+                # Baseline reset and advanced options
+                st.subheader("Baseline Reset Options")
+                reset_baseline_after_tp_sl = st.checkbox(
+                    "Reset baseline after TP/SL",
+                    value=True,
+                    help="Reset ROI baseline after TP/SL trigger to prevent consecutive triggers. Recommended: ON."
+                )
+                
+                # Hysteresis options
+                st.subheader("Hysteresis (Optional)")
+                col_h1, col_h2 = st.columns(2)
+                with col_h1:
+                    tp_hysteresis = st.number_input(
+                        "TP Hysteresis (%)",
+                        value=0.0,
+                        min_value=0.0,
+                        step=1.0,
+                        format="%0.1f",
+                        help="TP hysteresis percentage. After TP triggers, require return to drop below (threshold - hysteresis) before re-arming. Default: 0 (disabled)."
+                    )
+                with col_h2:
+                    sl_hysteresis = st.number_input(
+                        "SL Hysteresis (%)",
+                        value=0.0,
+                        min_value=0.0,
+                        step=1.0,
+                        format="%0.1f",
+                        help="SL hysteresis percentage. After SL triggers, require return to rise above (threshold + hysteresis) before re-arming. Default: 0 (disabled)."
+                    )
+                
+                # Convert percentage to decimal for BacktestParams
+                tp_hysteresis = tp_hysteresis / 100.0
+                sl_hysteresis = sl_hysteresis / 100.0
+                
+                # Cooldown options
+                st.subheader("Cooldown (Optional)")
+                col_c1, col_c2 = st.columns(2)
+                with col_c1:
+                    tp_cooldown_days = st.number_input(
+                        "TP Cooldown (days)",
+                        value=0,
+                        min_value=0,
+                        step=1,
+                        format="%d",
+                        help="Number of days to wait before allowing another TP trigger. Default: 0 (disabled)."
+                    )
+                with col_c2:
+                    sl_cooldown_days = st.number_input(
+                        "SL Cooldown (days)",
+                        value=0,
+                        min_value=0,
+                        step=1,
+                        format="%d",
+                        help="Number of days to wait before allowing another SL trigger. Default: 0 (disabled)."
+                    )
             
             run_btn = st.button("🚀 Run Backtest", type="primary", width='stretch')
             
@@ -304,8 +408,10 @@ def main() -> None:
         if start > end:
             errors.append(f"❌ End date ({end}) must be after start date ({start})")
         
-        if threshold >= 0:
-            errors.append("❌ Threshold must be negative (e.g., -0.041 for -4.1% drop)")
+        if threshold is None:
+            errors.append("❌ Threshold must be provided and negative (e.g., -4.1 for -4.1%)")
+        elif threshold >= 0:
+            errors.append("❌ Threshold must be negative (e.g., -4.1 for -4.1% drop)")
         
         if purchase_mode == "Budget-based":
             if weekly_budget is None or weekly_budget <= 0:
@@ -316,11 +422,27 @@ def main() -> None:
             if shares_per_signal is None or shares_per_signal <= 0:
                 errors.append("❌ Shares per signal must be positive")
         
-        if fee_rate < 0:
-            errors.append("❌ Fee rate must be non-negative")
+        if fee_rate is None:
+            errors.append("❌ Fee rate must be provided and non-negative (e.g., 0.05 for 0.05%)")
+        elif fee_rate < 0:
+            errors.append("❌ Fee rate must be non-negative (e.g., 0.05 for 0.05%)")
         
-        if slippage_rate < 0:
-            errors.append("❌ Slippage rate must be non-negative")
+        if slippage_rate is None:
+            errors.append("❌ Slippage rate must be provided and non-negative (e.g., 0.05 for 0.05%)")
+        elif slippage_rate < 0:
+            errors.append("❌ Slippage rate must be non-negative (e.g., 0.05 for 0.05%)")
+        
+        # TP/SL validation
+        if enable_tp_sl:
+            if tp_threshold is None:
+                errors.append("❌ Take-profit threshold must be provided when TP/SL is enabled")
+            elif tp_threshold <= 0:
+                errors.append("❌ Take-profit threshold must be positive (e.g., 30 for 30%)")
+            
+            if sl_threshold is None:
+                errors.append("❌ Stop-loss threshold must be provided when TP/SL is enabled")
+            elif sl_threshold >= 0:
+                errors.append("❌ Stop-loss threshold must be negative (e.g., -25 for -25%)")
         
         if errors:
             for error in errors:
@@ -344,13 +466,23 @@ def main() -> None:
         with st.spinner("🔄 Running backtest..."):
             try:
                 params = BacktestParams(
-                    threshold=float(threshold),
+                    threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
                     weekly_budget=float(weekly_budget) if weekly_budget else None,
                     mode=mode,  # type: ignore[arg-type]
                     carryover=carryover if carryover is not None else None,
                     shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
-                    fee_rate=float(fee_rate),
-                    slippage_rate=float(slippage_rate),
+                    fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0,
+                    slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0,
+                    enable_tp_sl=enable_tp_sl,
+                    tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
+                    sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,
+                    tp_sell_percentage=tp_sell_percentage,
+                    sl_sell_percentage=sl_sell_percentage,
+                    reset_baseline_after_tp_sl=reset_baseline_after_tp_sl,
+                    tp_hysteresis=float(tp_hysteresis) / 100.0 if tp_hysteresis is not None else 0.0,
+                    sl_hysteresis=float(sl_hysteresis) / 100.0 if sl_hysteresis is not None else 0.0,
+                    tp_cooldown_days=int(tp_cooldown_days) if tp_cooldown_days is not None else 0,
+                    sl_cooldown_days=int(sl_cooldown_days) if sl_cooldown_days is not None else 0,
                 )
                 
                 daily, metrics = run_backtest(prices, params)
@@ -387,9 +519,11 @@ def main() -> None:
         with col1:
             st.metric("Total Invested", f"${metrics['TotalInvested']:,.2f}")
             st.metric("Ending NAV", f"${metrics['EndingNAV']:,.2f}")
-            st.metric("Cumulative Return", f"{metrics['CumulativeReturn']*100:.2f}%")
+            st.metric("Profit", f"${metrics.get('Profit', 0.0):,.2f}", help="Profit = Equity + CumCashFlow (net profit/loss)")
+            st.metric("NAV (including invested)", f"${metrics.get('NAV_including_invested', 0.0):,.2f}", help="NAV_including_invested = CumInvested + Profit")
         
         with col2:
+            st.metric("Cumulative Return", f"{metrics['CumulativeReturn']*100:.2f}%")
             st.metric("CAGR", f"{metrics['CAGR']*100:.2f}%")
             st.metric("Maximum Drawdown", f"{metrics['MDD']*100:.2f}%")
             st.metric("XIRR", f"{metrics['XIRR']*100:.2f}%")
@@ -398,6 +532,20 @@ def main() -> None:
             st.metric("Total Trades", f"{int(metrics['Trades'])}")
             st.metric("Signal Days", f"{int(metrics['HitDays'])}")
             st.metric("Ending Equity", f"${metrics['EndingEquity']:,.2f}")
+        
+        # TP/SL metrics (if enabled)
+        if enable_tp_sl and "NumTakeProfits" in metrics:
+            st.subheader("🎯 Take-Profit / Stop-Loss Metrics")
+            tp_col1, tp_col2, tp_col3, tp_col4 = st.columns(4)
+            with tp_col1:
+                st.metric("Take-Profits", f"{int(metrics['NumTakeProfits'])}")
+            with tp_col2:
+                st.metric("Stop-Losses", f"{int(metrics['NumStopLosses'])}")
+            with tp_col3:
+                st.metric("Realized Gain", f"${metrics['TotalRealizedGain']:,.2f}")
+            with tp_col4:
+                st.metric("Realized Loss", f"${metrics['TotalRealizedLoss']:,.2f}")
+            st.metric("Net Realized P/L", f"${metrics['NetRealizedPnl']:,.2f}")
         
         # Full metrics JSON (collapsible)
         with st.expander("📋 Full Metrics (JSON)"):
@@ -422,6 +570,46 @@ def main() -> None:
                     fillcolor='rgba(70, 130, 180, 0.1)',
                     hovertemplate='<b>Date:</b> %{x}<br><b>NAV:</b> $%{y:,.2f}<extra></extra>'
                 ))
+                
+                # Add TP/SL markers if enabled
+                if enable_tp_sl and "TP_triggered" in daily.columns:
+                    tp_mask = daily["TP_triggered"]
+                    sl_mask = daily["SL_triggered"]
+                    
+                    if tp_mask.any():
+                        tp_dates = daily.index[tp_mask]
+                        tp_navs = daily.loc[tp_mask, "NAV"]
+                        fig.add_trace(go.Scatter(
+                            x=tp_dates,
+                            y=tp_navs.values,
+                            mode='markers',
+                            name='Take-Profit',
+                            marker=dict(
+                                symbol='triangle-up',
+                                size=12,
+                                color='green',
+                                line=dict(width=1, color='darkgreen')
+                            ),
+                            hovertemplate='<b>Date:</b> %{x}<br><b>NAV:</b> $%{y:,.2f}<br><b>Type:</b> Take-Profit<extra></extra>'
+                        ))
+                    
+                    if sl_mask.any():
+                        sl_dates = daily.index[sl_mask]
+                        sl_navs = daily.loc[sl_mask, "NAV"]
+                        fig.add_trace(go.Scatter(
+                            x=sl_dates,
+                            y=sl_navs.values,
+                            mode='markers',
+                            name='Stop-Loss',
+                            marker=dict(
+                                symbol='triangle-down',
+                                size=12,
+                                color='red',
+                                line=dict(width=1, color='darkred')
+                            ),
+                            hovertemplate='<b>Date:</b> %{x}<br><b>NAV:</b> $%{y:,.2f}<br><b>Type:</b> Stop-Loss<extra></extra>'
+                        ))
+                
                 fig.update_layout(
                     title=dict(text=f"Net Asset Value - {ticker}", font=dict(size=16)),
                     xaxis_title="Date",
@@ -429,7 +617,7 @@ def main() -> None:
                     hovermode='x unified',
                     template='plotly_white',
                     height=500,
-                    showlegend=False
+                    showlegend=True if enable_tp_sl and "TP_triggered" in daily.columns and (daily["TP_triggered"].any() or daily["SL_triggered"].any()) else False
                 )
                 st.plotly_chart(fig, width='stretch')
             else:
