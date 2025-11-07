@@ -819,7 +819,12 @@ def main() -> None:
             # Handle universal preset ticker update before widget creation
             if 'universal_preset_ticker_update' in st.session_state:
                 # Update ticker before widget is created
-                st.session_state['ticker_input'] = st.session_state['universal_preset_ticker_update']
+                # Only update if user hasn't manually modified the ticker
+                if not st.session_state.get('user_modified_ticker', False):
+                    st.session_state['ticker_input'] = st.session_state['universal_preset_ticker_update']
+                    # Reset user_modified_ticker flag when preset updates ticker
+                    st.session_state['user_modified_ticker'] = False
+                # Always delete the flag after processing
                 del st.session_state['universal_preset_ticker_update']
 
             # Ticker input with validation
@@ -829,11 +834,18 @@ def main() -> None:
             elif 'ticker_input' in st.session_state:
                 ticker_default = st.session_state['ticker_input']
             
+            # Callback function to track user ticker modifications
+            def on_ticker_change():
+                # Mark as user modified when ticker is changed by user interaction
+                # This callback is only triggered when user manually changes the ticker input
+                st.session_state['user_modified_ticker'] = True
+            
             ticker = st.text_input(
                 "Ticker",
                 value=ticker_default,
                 help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)",
-                key="ticker_input"
+                key="ticker_input",
+                on_change=on_ticker_change
             ).strip().upper()
 
             # Ticker validation
@@ -936,8 +948,13 @@ def main() -> None:
                                 # Apply preset values immediately by updating session_state
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
+                                
                                 # Use a flag to update ticker before widget creation
-                                st.session_state['universal_preset_ticker_update'] = universal_preset.ticker
+                                # Only update ticker if user hasn't manually modified it
+                                if not st.session_state.get('user_modified_ticker', False):
+                                    st.session_state['universal_preset_ticker_update'] = universal_preset.ticker
+                                    # Reset user_modified_ticker when preset updates ticker
+                                    st.session_state['user_modified_ticker'] = False
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
@@ -946,9 +963,14 @@ def main() -> None:
                         del st.session_state['universal_preset_loaded']
                         if 'universal_preset' in st.session_state:
                             del st.session_state['universal_preset']
-                        # Reset ticker if it was set by universal preset
-                        if 'ticker_input' in st.session_state and st.session_state['ticker_input'] in ['TQQQ', 'SOXL', 'QLD']:
+                        
+                        # Reset ticker only if it was set by universal preset (not user-modified)
+                        current_ticker = st.session_state.get('ticker_input', '')
+                        if current_ticker in ['TQQQ', 'SOXL', 'QLD'] and not st.session_state.get('user_modified_ticker', False):
                             st.session_state['ticker_input'] = 'TQQQ'
+                            st.session_state['user_modified_ticker'] = False
+                        # If user modified the ticker, keep it as is
+                        
                         st.rerun()
                     
                     # Show current universal preset status
@@ -986,6 +1008,8 @@ def main() -> None:
                                 
                                 st.session_state['loaded_preset'] = loaded_params
                                 st.session_state['loaded_preset_name'] = selected_preset_name
+                                # Reset user_modified_ticker when loading a preset
+                                st.session_state['user_modified_ticker'] = False
                                 # Store dates in session_state and update date inputs
                                 if loaded_start_date:
                                     st.session_state['loaded_start_date'] = loaded_start_date
