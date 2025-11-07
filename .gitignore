@@ -35,6 +35,9 @@ env/
 .cache/
 *.cache
 
+# Presets (user-specific, stored locally)
+.presets/
+
 # Logs and databases
 *.log
 *.db

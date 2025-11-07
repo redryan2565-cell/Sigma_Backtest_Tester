@@ -103,10 +103,11 @@ except ImportError as e:
     run_search = None
 
 try:
-    from src.storage.presets import ALL_PRESETS, get_preset_manager
+    from src.storage.presets import ALL_PRESETS, get_preset_manager, reset_preset_manager
     PRESETS_AVAILABLE = True
 except ImportError as e:
     PRESETS_AVAILABLE = False
+    reset_preset_manager = None
     PRESETS_ERROR = str(e)
     ALL_PRESETS = {}
     get_preset_manager = None
@@ -854,6 +855,7 @@ def main() -> None:
                 preset_manager = get_preset_manager()
                 saved_presets = preset_manager.list_presets()
 
+                # Load preset UI (프리셋이 있을 때만 표시)
                 if saved_presets:
                     st.subheader("📁 Load Saved Preset")
                     col_load1, col_load2 = st.columns([3, 1])
@@ -887,6 +889,9 @@ def main() -> None:
                     # Delete button
                     if selected_preset_name and st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
                         if preset_manager.delete(selected_preset_name):
+                            # Reset preset manager cache to refresh the list
+                            if reset_preset_manager:
+                                reset_preset_manager()
                             st.success(f"✅ Deleted: {selected_preset_name}")
                             st.rerun()
 
@@ -909,25 +914,22 @@ def main() -> None:
 
                     st.divider()
 
-                    # Save Current Settings (moved here)
-                    st.subheader("💾 Save Current Settings")
-                    if not PRESETS_AVAILABLE or get_preset_manager is None:
-                        st.warning("⚠️ Presets functionality not available")
-                    else:
-                        new_preset_name = st.text_input(
-                            "Preset Name",
-                            value="",
-                            help="Enter a name for this preset configuration",
-                            key="save_preset_name"
-                        )
+                # Save Current Settings UI (항상 표시 - 프리셋이 없어도 저장 가능)
+                st.subheader("💾 Save Current Settings")
+                new_preset_name = st.text_input(
+                    "Preset Name",
+                    value="",
+                    help="Enter a name for this preset configuration",
+                    key="save_preset_name"
+                )
 
-                        if st.button("💾 Save Current Settings", disabled=not new_preset_name, key="save_preset_btn"):
-                            # This will be handled after all inputs are collected
-                            # Set a flag in session_state to trigger save after BacktestParams is created
-                            st.session_state['trigger_save_preset'] = True
-                            st.session_state['preset_name_to_save'] = new_preset_name
+                if st.button("💾 Save Current Settings", disabled=not new_preset_name, key="save_preset_btn"):
+                    # This will be handled after all inputs are collected
+                    # Set a flag in session_state to trigger save after BacktestParams is created
+                    st.session_state['trigger_save_preset'] = True
+                    st.session_state['preset_name_to_save'] = new_preset_name
 
-                    st.divider()
+                st.divider()
 
             # Get loaded preset values (if any)
             loaded_params = None
@@ -1298,6 +1300,9 @@ def main() -> None:
                             start_date=start,
                             end_date=end
                         )
+                        # Reset preset manager cache to refresh the list
+                        if reset_preset_manager:
+                            reset_preset_manager()
                         st.success(f"✅ Saved preset: {st.session_state['preset_name_to_save']}")
                         # Clear the trigger flags
                         del st.session_state['trigger_save_preset']

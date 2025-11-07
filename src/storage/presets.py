@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import platform
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
@@ -52,6 +54,34 @@ ALL_PRESETS = {
 }
 
 
+def _get_default_presets_dir() -> Path:
+    """Get default presets directory based on OS.
+
+    Returns:
+        Path to user-specific presets directory:
+        - Windows: %APPDATA%\\normal-dip-bt\\presets\\
+        - Linux: ~/.config/normal-dip-bt/presets/
+        - Mac: ~/Library/Application Support/normal-dip-bt/presets/
+    """
+    system = platform.system()
+    home = Path.home()
+
+    if system == "Windows":
+        # Use APPDATA if available, otherwise use USERPROFILE
+        appdata = os.getenv("APPDATA")
+        if appdata:
+            base_dir = Path(appdata)
+        else:
+            base_dir = home
+        presets_dir = base_dir / "normal-dip-bt" / "presets"
+    elif system == "Darwin":  # macOS
+        presets_dir = home / "Library" / "Application Support" / "normal-dip-bt" / "presets"
+    else:  # Linux and other Unix-like systems
+        presets_dir = home / ".config" / "normal-dip-bt" / "presets"
+
+    return presets_dir
+
+
 class PresetManager:
     """Manage saved backtest parameter presets."""
 
@@ -59,12 +89,10 @@ class PresetManager:
         """Initialize preset manager.
 
         Args:
-            presets_dir: Directory for preset files. Defaults to .presets/ in project root.
+            presets_dir: Directory for preset files. Defaults to user-specific local directory.
         """
         if presets_dir is None:
-            # Default to .presets/ in project root
-            project_root = Path(__file__).parent.parent.parent
-            presets_dir = project_root / ".presets"
+            presets_dir = _get_default_presets_dir()
         self.presets_dir = Path(presets_dir)
         self.presets_dir.mkdir(parents=True, exist_ok=True)
 
@@ -201,4 +229,12 @@ def get_preset_manager() -> PresetManager:
         _preset_manager = PresetManager()
     return _preset_manager
 
+
+def reset_preset_manager() -> None:
+    """Reset global preset manager instance (for cache invalidation).
+
+    Call this after deleting or saving presets to ensure the list is refreshed.
+    """
+    global _preset_manager
+    _preset_manager = None
 
