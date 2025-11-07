@@ -135,7 +135,31 @@ def main() -> None:
     # No need to reload here for security and performance
     
     # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
-    if OPTION_MENU_AVAILABLE:
+    # Ensure all optional imports are available - handle Streamlit Cloud module loading issues
+    use_option_menu = False
+    option_menu_func = None
+    
+    try:
+        # Try to use module-level variable first
+        if 'OPTION_MENU_AVAILABLE' in globals() and globals().get('OPTION_MENU_AVAILABLE', False):
+            use_option_menu = True
+            option_menu_func = globals().get('option_menu')
+        elif 'option_menu' in globals() and globals().get('option_menu') is not None:
+            use_option_menu = True
+            option_menu_func = globals().get('option_menu')
+    except (NameError, AttributeError, KeyError):
+        pass
+    
+    # If not available, try to import directly
+    if not use_option_menu:
+        try:
+            from streamlit_option_menu import option_menu as option_menu_func
+            use_option_menu = True
+        except ImportError:
+            use_option_menu = False
+            option_menu_func = None
+    
+    if use_option_menu and option_menu_func:
         if DEVELOPER_MODE:
             # Developer mode: show all tabs
             options = ["📊 Backtest", "🔍 Optimization", "⚡ Leverage Mode", "📁 Load CSV", "ℹ️ About"]
@@ -145,7 +169,7 @@ def main() -> None:
             options = ["📊 Backtest", "📁 Load CSV", "ℹ️ About"]
             icons = ["graph-up", "folder", "info-circle"]
         
-        selected = option_menu(
+        selected = option_menu_func(
             menu_title=None,
             options=options,
             icons=icons,
