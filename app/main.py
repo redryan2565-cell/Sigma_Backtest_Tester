@@ -1254,9 +1254,9 @@ def main() -> None:
                     value=slippage_rate_value,
                     step=0.01,
                     format="%0.2f",
-                    min_value=0.0,
+                    min_value=-10.0,
                     max_value=10.0,
-                    help="괴리율: 주문 체결 시 발생하는 가격 차이 비율 (e.g., 0.05 for 0.05%)"
+                    help="괴리율: 주문 체결 시 발생하는 가격 차이 비율 (음수 가능, e.g., -4.2 for -4.2%)"
                 )
 
             # Take-Profit / Stop-Loss section
