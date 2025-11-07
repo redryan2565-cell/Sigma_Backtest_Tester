@@ -808,6 +808,14 @@ def main() -> None:
         if view_mode == "Run Backtest":
             st.header("Parameters")
 
+            # Initialize preset variables early (before ticker input)
+            loaded_params = None
+            universal_preset = None
+            if 'universal_preset' in st.session_state and st.session_state.get('universal_preset'):
+                universal_preset = st.session_state['universal_preset']
+            elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+                loaded_params = st.session_state['loaded_preset']
+
             # Ticker input with validation
             ticker_default = "TQQQ"
             if universal_preset:
@@ -1099,14 +1107,6 @@ def main() -> None:
                             st.error(f"❌ Failed to import presets: {exc}")
 
                 st.divider()
-
-            # Get loaded preset values (if any)
-            loaded_params = None
-            universal_preset = None
-            if 'universal_preset' in st.session_state and st.session_state.get('universal_preset'):
-                universal_preset = st.session_state['universal_preset']
-            elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
-                loaded_params = st.session_state['loaded_preset']
 
             # Date inputs (with loaded preset dates if available)
             # Initialize session_state for date inputs if not present
