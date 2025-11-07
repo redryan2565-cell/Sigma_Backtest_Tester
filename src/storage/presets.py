@@ -54,6 +54,24 @@ ALL_PRESETS = {
 }
 
 
+def _is_streamlit_cloud() -> bool:
+    """Check if running on Streamlit Cloud.
+
+    Returns:
+        True if running on Streamlit Cloud, False otherwise.
+    """
+    # Check for Streamlit Cloud environment variables
+    if os.getenv('STREAMLIT_SERVER_ENV') == 'cloud':
+        return True
+    # Check for Streamlit Cloud mount path
+    if os.path.exists('/mount/src'):
+        return True
+    # Check for Streamlit Cloud specific paths
+    if os.path.exists('/home/appuser') or os.path.exists('/home/adminuser'):
+        return True
+    return False
+
+
 def _get_default_presets_dir() -> Path:
     """Get default presets directory based on OS.
 
@@ -82,8 +100,155 @@ def _get_default_presets_dir() -> Path:
     return presets_dir
 
 
+class SessionPresetManager:
+    """Preset manager using Streamlit session_state (user-specific).
+
+    This manager stores presets in the browser session, ensuring each user
+    has their own isolated preset storage. Suitable for Streamlit Cloud deployment.
+    """
+
+    def __init__(self) -> None:
+        """Initialize session-based preset manager."""
+        try:
+            import streamlit as st
+            if 'user_presets' not in st.session_state:
+                st.session_state['user_presets'] = {}
+        except ImportError:
+            # If streamlit is not available, use a fallback dict
+            # This should not happen in normal usage
+            self._fallback_storage: dict[str, dict] = {}
+            if not hasattr(self, '_fallback_storage'):
+                self._fallback_storage = {}
+
+    def _get_storage(self) -> dict:
+        """Get the storage dictionary (session_state or fallback)."""
+        try:
+            import streamlit as st
+            if 'user_presets' not in st.session_state:
+                st.session_state['user_presets'] = {}
+            return st.session_state['user_presets']
+        except ImportError:
+            if not hasattr(self, '_fallback_storage'):
+                self._fallback_storage = {}
+            return self._fallback_storage
+
+    def save(self, name: str, params: BacktestParams, start_date: date | None = None, end_date: date | None = None) -> None:
+        """Save a preset.
+
+        Args:
+            name: Preset name.
+            params: BacktestParams to save.
+            start_date: Optional start date for backtest.
+            end_date: Optional end date for backtest.
+        """
+        storage = self._get_storage()
+        storage[name] = {
+            'params': asdict(params),
+            'start_date': start_date.isoformat() if start_date else None,
+            'end_date': end_date.isoformat() if end_date else None
+        }
+
+    def load(self, name: str) -> tuple[BacktestParams | None, date | None, date | None]:
+        """Load a preset.
+
+        Args:
+            name: Preset name.
+
+        Returns:
+            Tuple of (BacktestParams, start_date, end_date). Returns (None, None, None) if not found.
+        """
+        storage = self._get_storage()
+        preset_data = storage.get(name)
+
+        if not preset_data:
+            return None, None, None
+
+        try:
+            # Extract start/end dates
+            start_date = None
+            end_date = None
+            if preset_data.get('start_date'):
+                start_date = date.fromisoformat(preset_data['start_date'])
+            if preset_data.get('end_date'):
+                end_date = date.fromisoformat(preset_data['end_date'])
+
+            # Get params dict
+            params_dict = preset_data.get('params', {})
+            if not params_dict or 'threshold' not in params_dict:
+                return None, None, None
+
+            # Ensure shares_per_signal is set
+            if 'shares_per_signal' not in params_dict or params_dict['shares_per_signal'] is None:
+                if 'weekly_budget' in params_dict and params_dict['weekly_budget'] is not None:
+                    # Budget-based preset - skip it (no longer supported)
+                    return None, None, None
+                # No shares_per_signal and no weekly_budget - invalid preset
+                return None, None, None
+
+            # Ensure enable_tp_sl is boolean
+            if 'enable_tp_sl' in params_dict:
+                params_dict['enable_tp_sl'] = bool(params_dict['enable_tp_sl'])
+
+            # Remove budget-related fields if present (for backward compatibility)
+            params_dict.pop('weekly_budget', None)
+            params_dict.pop('mode', None)
+            params_dict.pop('carryover', None)
+
+            params = BacktestParams(**params_dict)
+            return params, start_date, end_date
+        except (ValueError, TypeError, KeyError):
+            # Return None on validation errors
+            return None, None, None
+
+    def list_presets(self) -> list[str]:
+        """List all saved preset names.
+
+        Returns:
+            List of preset names.
+        """
+        storage = self._get_storage()
+        return sorted(list(storage.keys()))
+
+    def delete(self, name: str) -> bool:
+        """Delete a preset.
+
+        Args:
+            name: Preset name.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        storage = self._get_storage()
+        if name in storage:
+            del storage[name]
+            return True
+        return False
+
+    def export_all(self) -> dict:
+        """Export all presets as dictionary for download.
+
+        Returns:
+            Dictionary containing all presets.
+        """
+        storage = self._get_storage()
+        return dict(storage)
+
+    def import_all(self, presets_dict: dict) -> None:
+        """Import presets from dictionary (from upload).
+
+        Args:
+            presets_dict: Dictionary containing presets to import.
+        """
+        storage = self._get_storage()
+        for name, data in presets_dict.items():
+            storage[name] = data
+
+
 class PresetManager:
-    """Manage saved backtest parameter presets."""
+    """Manage saved backtest parameter presets (file-based).
+
+    This manager stores presets in the local file system. Suitable for local development.
+    """
 
     def __init__(self, presets_dir: Path | None = None) -> None:
         """Initialize preset manager.
@@ -217,16 +382,73 @@ class PresetManager:
         except Exception:
             return False
 
+    def export_all(self) -> dict:
+        """Export all presets as dictionary for download.
+
+        Returns:
+            Dictionary containing all presets.
+        """
+        all_presets = {}
+        for preset_name in self.list_presets():
+            params, start_date, end_date = self.load(preset_name)
+            if params:
+                all_presets[preset_name] = {
+                    'params': asdict(params),
+                    'start_date': start_date.isoformat() if start_date else None,
+                    'end_date': end_date.isoformat() if end_date else None
+                }
+        return all_presets
+
+    def import_all(self, presets_dict: dict) -> None:
+        """Import presets from dictionary (from upload).
+
+        Args:
+            presets_dict: Dictionary containing presets to import.
+        """
+        for name, data in presets_dict.items():
+            try:
+                # Extract params and dates
+                params_dict = data.get('params', {})
+                start_date_str = data.get('start_date')
+                end_date_str = data.get('end_date')
+
+                # Convert dates
+                start_date = date.fromisoformat(start_date_str) if start_date_str else None
+                end_date = date.fromisoformat(end_date_str) if end_date_str else None
+
+                # Create BacktestParams
+                if 'threshold' in params_dict:
+                    # Remove budget-related fields
+                    params_dict.pop('weekly_budget', None)
+                    params_dict.pop('mode', None)
+                    params_dict.pop('carryover', None)
+                    params = BacktestParams(**params_dict)
+                    self.save(name, params, start_date, end_date)
+            except (ValueError, TypeError, KeyError):
+                # Skip invalid presets
+                continue
+
 
 # Global preset manager instance
-_preset_manager: PresetManager | None = None
+_preset_manager: PresetManager | SessionPresetManager | None = None
 
 
-def get_preset_manager() -> PresetManager:
-    """Get global preset manager instance."""
+def get_preset_manager() -> PresetManager | SessionPresetManager:
+    """Get global preset manager instance.
+
+    Automatically selects the appropriate manager based on deployment environment:
+    - Streamlit Cloud: SessionPresetManager (session_state-based)
+    - Local development: PresetManager (file-based)
+
+    Returns:
+        PresetManager or SessionPresetManager instance.
+    """
     global _preset_manager
     if _preset_manager is None:
-        _preset_manager = PresetManager()
+        if _is_streamlit_cloud():
+            _preset_manager = SessionPresetManager()
+        else:
+            _preset_manager = PresetManager()
     return _preset_manager
 
 
@@ -234,7 +456,11 @@ def reset_preset_manager() -> None:
     """Reset global preset manager instance (for cache invalidation).
 
     Call this after deleting or saving presets to ensure the list is refreshed.
+    Note: This only affects file-based PresetManager. SessionPresetManager
+    doesn't need reset as it uses session_state directly.
     """
     global _preset_manager
-    _preset_manager = None
+    # Only reset if it's a file-based manager
+    if isinstance(_preset_manager, PresetManager):
+        _preset_manager = None
 

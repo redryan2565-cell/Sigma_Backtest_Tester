@@ -137,7 +137,7 @@ def validate_ticker_cached(ticker: str) -> bool:
 
 
 def main() -> None:
-    st.set_page_config(page_title="normal-dip-bt", layout="wide", page_icon="📈")
+    st.set_page_config(page_title="normal-dip-bt", layout="wide", page_icon="📈", initial_sidebar_state="expanded")
 
     # Settings are already loaded at module level (DEVELOPER_MODE, debug_mode)
     # No need to reload here for security and performance
@@ -224,6 +224,9 @@ def main() -> None:
             st.info("**AgGrid Tables**\n\nSort, filter, and export data")
         with col3:
             st.info("**Auto CSV Save**\n\nResults automatically saved")
+
+        # AI 생성 앱 경고 문구
+        st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
 
         return
 
@@ -602,9 +605,9 @@ def main() -> None:
 
         col_fee1, col_fee2 = st.columns(2)
         with col_fee1:
-            fee_rate_lev = st.number_input("Fee Rate (%)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_fee_rate")
+            fee_rate_lev = st.number_input("Fee Rate (%) (운영보수)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_fee_rate", help="운영보수: 거래 시 발생하는 수수료 비율")
         with col_fee2:
-            slippage_rate_lev = st.number_input("Slippage Rate (%)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_slippage_rate")
+            slippage_rate_lev = st.number_input("Slippage Rate (%) (괴리율)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_slippage_rate", help="괴리율: 주문 체결 시 발생하는 가격 차이 비율")
 
         # Run button
         can_run = (
@@ -889,11 +892,31 @@ def main() -> None:
                     # Delete button
                     if selected_preset_name and st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
                         if preset_manager.delete(selected_preset_name):
-                            # Reset preset manager cache to refresh the list
+                            # Reset preset manager cache to refresh the list (only for file-based manager)
                             if reset_preset_manager:
-                                reset_preset_manager()
+                                from src.storage.presets import PresetManager as FilePresetManager
+                                if isinstance(preset_manager, FilePresetManager):
+                                    reset_preset_manager()
                             st.success(f"✅ Deleted: {selected_preset_name}")
                             st.rerun()
+
+                    # Download all presets button
+                    if saved_presets:
+                        try:
+                            from datetime import datetime
+                            all_presets = preset_manager.export_all()
+                            json_data = json.dumps(all_presets, indent=2, ensure_ascii=False)
+                            st.download_button(
+                                "📥 Download All Presets",
+                                data=json_data,
+                                file_name=f"presets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                                mime="application/json",
+                                help="Download all your presets as JSON file for backup or transfer to another device",
+                                key="download_presets_btn"
+                            )
+                        except AttributeError:
+                            # If export_all is not available (old PresetManager), skip download button
+                            pass
 
                     # Show loaded preset info and clear button (moved here)
                     if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
@@ -928,6 +951,34 @@ def main() -> None:
                     # Set a flag in session_state to trigger save after BacktestParams is created
                     st.session_state['trigger_save_preset'] = True
                     st.session_state['preset_name_to_save'] = new_preset_name
+
+                st.divider()
+
+                # Import presets from file
+                st.subheader("📤 Import Presets")
+                uploaded_file = st.file_uploader(
+                    "Upload presets JSON file",
+                    type=["json"],
+                    help="Upload a previously downloaded presets file to restore your presets. This allows you to keep your presets even after closing the browser.",
+                    key="upload_presets_file"
+                )
+                if uploaded_file is not None:
+                    try:
+                        presets_data = json.load(uploaded_file)
+                        if isinstance(presets_data, dict):
+                            # Check if preset_manager has import_all method
+                            if hasattr(preset_manager, 'import_all'):
+                                preset_manager.import_all(presets_data)
+                                st.success(f"✅ Imported {len(presets_data)} preset(s)")
+                                st.rerun()
+                            else:
+                                st.error("❌ Import not supported with current preset manager")
+                        else:
+                            st.error("❌ Invalid preset file format. Expected a JSON object.")
+                    except json.JSONDecodeError as exc:
+                        st.error(f"❌ Failed to parse JSON file: {exc}")
+                    except Exception as exc:
+                        st.error(f"❌ Failed to import presets: {exc}")
 
                 st.divider()
 
@@ -1011,23 +1062,23 @@ def main() -> None:
             col3, col4 = st.columns(2)
             with col3:
                 fee_rate = st.number_input(
-                    "Fee Rate (%)",
+                    "Fee Rate (%) (운영보수)",
                     value=fee_rate_value,
                     step=0.01,
                     format="%0.2f",
                     min_value=0.0,
                     max_value=10.0,
-                    help="Trading fee rate as percentage (e.g., 0.05 for 0.05%)"
+                    help="운영보수: 거래 시 발생하는 수수료 비율 (e.g., 0.05 for 0.05%)"
                 )
             with col4:
                 slippage_rate = st.number_input(
-                    "Slippage Rate (%)",
+                    "Slippage Rate (%) (괴리율)",
                     value=slippage_rate_value,
                     step=0.01,
                     format="%0.2f",
                     min_value=0.0,
                     max_value=10.0,
-                    help="Price slippage assumption as percentage (e.g., 0.05 for 0.05%)"
+                    help="괴리율: 주문 체결 시 발생하는 가격 차이 비율 (e.g., 0.05 for 0.05%)"
                 )
 
             # Take-Profit / Stop-Loss section
@@ -1300,9 +1351,11 @@ def main() -> None:
                             start_date=start,
                             end_date=end
                         )
-                        # Reset preset manager cache to refresh the list
+                        # Reset preset manager cache to refresh the list (only for file-based manager)
                         if reset_preset_manager:
-                            reset_preset_manager()
+                            from src.storage.presets import PresetManager as FilePresetManager
+                            if isinstance(preset_manager, FilePresetManager):
+                                reset_preset_manager()
                         st.success(f"✅ Saved preset: {st.session_state['preset_name_to_save']}")
                         # Clear the trigger flags
                         del st.session_state['trigger_save_preset']
@@ -1457,6 +1510,9 @@ def main() -> None:
                 )
             else:
                 st.dataframe(daily, width='stretch', height=400)
+
+            # AI 생성 앱 경고 문구
+            st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
             return
 
         # Run backtest path
@@ -1856,6 +1912,9 @@ def main() -> None:
                 st.info(f"Selected: {grid_response['selected_rows'][0]}")
         else:
             st.dataframe(daily, width='stretch', height=400)
+
+        # AI 생성 앱 경고 문구
+        st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
 
 
 if __name__ == "__main__":  # pragma: no cover
