@@ -827,26 +827,30 @@ def main() -> None:
                 # Always delete the flag after processing
                 del st.session_state['universal_preset_ticker_update']
 
+            # Initialize ticker_input in session_state if not present
+            if 'ticker_input' not in st.session_state:
+                if universal_preset:
+                    st.session_state['ticker_input'] = universal_preset.ticker
+                else:
+                    st.session_state['ticker_input'] = "TQQQ"
+            
             # Ticker input with validation
-            ticker_default = "TQQQ"
-            if universal_preset:
-                ticker_default = universal_preset.ticker
-            elif 'ticker_input' in st.session_state:
-                ticker_default = st.session_state['ticker_input']
-            
-            # Callback function to track user ticker modifications
-            def on_ticker_change():
-                # Mark as user modified when ticker is changed by user interaction
-                # This callback is only triggered when user manually changes the ticker input
-                st.session_state['user_modified_ticker'] = True
-            
+            # Use key parameter only - Streamlit will automatically use session_state value
+            # Don't pass value parameter to avoid conflict with session_state
             ticker = st.text_input(
                 "Ticker",
-                value=ticker_default,
                 help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)",
-                key="ticker_input",
-                on_change=on_ticker_change
+                key="ticker_input"
             ).strip().upper()
+            
+            # Track user modifications when ticker changes
+            # Check if ticker was modified by comparing with previous value
+            if 'previous_ticker_input' in st.session_state:
+                if st.session_state['previous_ticker_input'] != ticker:
+                    # Ticker was changed - check if it was by user or preset
+                    if 'universal_preset_ticker_update' not in st.session_state:
+                        st.session_state['user_modified_ticker'] = True
+            st.session_state['previous_ticker_input'] = ticker
 
             # Ticker validation
             ticker_valid = True
@@ -949,9 +953,10 @@ def main() -> None:
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
                                 
-                                # Use a flag to update ticker before widget creation
+                                # Update ticker directly in session_state before widget creation
                                 # Only update ticker if user hasn't manually modified it
                                 if not st.session_state.get('user_modified_ticker', False):
+                                    # Set flag to update ticker before widget creation
                                     st.session_state['universal_preset_ticker_update'] = universal_preset.ticker
                                     # Reset user_modified_ticker when preset updates ticker
                                     st.session_state['user_modified_ticker'] = False
