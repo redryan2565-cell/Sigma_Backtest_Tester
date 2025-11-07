@@ -29,12 +29,21 @@ except ImportError:
 
 # Initialize settings at module level for security configuration
 # This ensures settings are loaded once and available throughout the app
-_settings = get_settings()
-DEVELOPER_MODE = _settings.developer_mode
-debug_mode = _settings.debug_mode
+try:
+    _settings = get_settings()
+    # Safe attribute access with fallback defaults
+    DEVELOPER_MODE = getattr(_settings, 'developer_mode', False)
+    debug_mode = getattr(_settings, 'debug_mode', False)
+except Exception as e:
+    # Fallback to safe defaults if settings loading fails
+    import logging
+    logging.warning(f"Failed to load settings: {e}, using defaults")
+    DEVELOPER_MODE = False
+    debug_mode = False
+    _settings = None
 
 # Setup logging (only log errors in production)
-if _setup_logging_available:
+if _setup_logging_available and _settings is not None:
     setup_logging(_settings)
 else:
     # Fallback logging setup
