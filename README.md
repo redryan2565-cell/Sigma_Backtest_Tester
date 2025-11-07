@@ -1,8 +1,11 @@
 # Normal Dip Backtest (yAOIL)
 
 [![CI](https://github.com/redryan2565-cell/pratice/actions/workflows/ci.yml/badge.svg)](https://github.com/redryan2565-cell/pratice/actions/workflows/ci.yml)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io)
 
 백테스트 엔진 + Streamlit GUI를 활용한 딥 구매 전략 백테스트 도구.
+
+**🚀 [Streamlit Cloud에서 배포됨](https://share.streamlit.io)** - 웹 브라우저에서 바로 사용 가능
 
 ## 주요 기능
 
@@ -49,6 +52,15 @@ ndbt run TQQQ --start 2023-01-01 --end 2023-12-31 --threshold -0.041 --shares-pe
 ```bash
 streamlit run app/main.py
 ```
+
+**Streamlit Cloud 배포**: 자세한 배포 가이드는 [배포 문서](docs/deployment.md)를 참조하세요.
+
+#### 제한사항
+
+- **날짜 범위**: 최대 10년 (3,650일)
+- **파일 업로드**: CSV 파일 최대 10MB
+- **입력 검증**: 모든 입력값은 서버 측에서 검증됩니다
+- **프로덕션 모드**: 기본적으로 Optimization/Leverage Mode는 숨겨집니다 (개발자 모드에서만 사용 가능)
 
 ## 프로젝트 구조
 
@@ -222,11 +234,13 @@ mypy src/ app/
 1. GitHub 저장소에 코드 푸시
 2. [Streamlit Cloud](https://streamlit.io/cloud)에서 새 앱 생성
 3. 앱 경로 설정: `app/main.py`
-4. 환경 변수 설정 (선택):
-   - `DEVELOPER_MODE`: 개발자 모드 활성화 (기본값: false)
-   - `DEBUG_MODE`: 디버그 모드 활성화 (기본값: false)
-   - `CACHE_ENABLED`: 캐시 활성화 (기본값: true)
-   - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: 24)
+4. 환경 변수 설정 (필수):
+   - `DEVELOPER_MODE`: 개발자 모드 활성화 (기본값: `"false"` - 프로덕션 권장)
+   - `DEBUG_MODE`: 디버그 모드 활성화 (기본값: `"false"` - 프로덕션 권장)
+   - `CACHE_ENABLED`: 캐시 활성화 (기본값: `"true"`)
+   - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: `"24"`)
+
+**중요**: 프로덕션 배포 시 반드시 `DEVELOPER_MODE=false`와 `DEBUG_MODE=false`로 설정하세요.
 
 ### 로컬 개발
 

@@ -9,39 +9,24 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Developer mode flag (for local development only)
-# Set DEVELOPER_MODE=true in .env or environment variables to enable Optimization/Leverage Mode
-DEVELOPER_MODE = os.getenv("DEVELOPER_MODE", "false").lower() == "true"
-
-# Optional imports for enhanced features
-try:
-    import plotly.graph_objects as go
-    import plotly.express as px
-    from plotly.subplots import make_subplots
-    PLOTLY_AVAILABLE = True
-except ImportError:
-    PLOTLY_AVAILABLE = False
-    import matplotlib.pyplot as plt
-
-try:
-    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
-    AGGrid_AVAILABLE = True
-except ImportError:
-    AGGrid_AVAILABLE = False
-
-try:
-    from streamlit_option_menu import option_menu
-    OPTION_MENU_AVAILABLE = True
-except ImportError:
-    OPTION_MENU_AVAILABLE = False
-
 # Fix import path for Streamlit execution
 if Path(__file__).parent.parent.parent.exists():
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.backtest.engine import BacktestParams, run_backtest
-from src.config import get_settings
+from src.config import get_settings, setup_logging
 from src.data.providers.yfin import YFinanceFeed
+
+# Initialize settings at module level for security configuration
+# This ensures settings are loaded once and available throughout the app
+_settings = get_settings()
+DEVELOPER_MODE = _settings.developer_mode
+debug_mode = _settings.debug_mode
+
+# Setup logging (only log errors in production)
+setup_logging(_settings)
+import logging
+logger = logging.getLogger(__name__)
 try:
     from src.optimization.grid_search import generate_param_space, generate_leverage_param_space, run_search
     OPTIMIZATION_AVAILABLE = True
@@ -69,12 +54,26 @@ except ImportError as e:
     create_monthly_returns_heatmap = None
 
 
+# Performance: Cached functions for data fetching and validation
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_price_data(ticker: str, start_date: date, end_date: date) -> pd.DataFrame:
+    """Fetch price data with caching."""
+    feed = YFinanceFeed()
+    return feed.get_daily(ticker, start_date, end_date)
+
+
+@st.cache_data(ttl=86400)  # Cache for 24 hours (ticker validity doesn't change often)
+def validate_ticker_cached(ticker: str) -> bool:
+    """Validate ticker with caching."""
+    feed = YFinanceFeed()
+    return feed.validate_ticker(ticker)
+
+
 def main() -> None:
     st.set_page_config(page_title="normal-dip-bt", layout="wide", page_icon="📈")
     
-    # Get settings for security configuration
-    settings = get_settings()
-    debug_mode = settings.debug_mode
+    # Settings are already loaded at module level (DEVELOPER_MODE, debug_mode)
+    # No need to reload here for security and performance
     
     # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
     if OPTION_MENU_AVAILABLE:
@@ -180,11 +179,10 @@ def main() -> None:
                 if cache_key in st.session_state['ticker_validation_cache']:
                     opt_ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
                 else:
-                    # Validate ticker
+                    # Validate ticker using cached function
                     try:
-                        feed = YFinanceFeed()
-                        opt_ticker_valid = feed.validate_ticker(opt_ticker)
-                        # Cache the result
+                        opt_ticker_valid = validate_ticker_cached(opt_ticker)
+                        # Cache the result in session_state for UI state management
                         st.session_state['ticker_validation_cache'][cache_key] = opt_ticker_valid
                     except Exception as exc:
                         # Network error or other exception
@@ -240,11 +238,10 @@ def main() -> None:
             
             with st.spinner("📡 Fetching data..."):
                 try:
-                    feed = YFinanceFeed()
-                    # Fetch full range
+                    # Fetch full range using cached function
                     full_start = min(is_start, os_start)
                     full_end = max(is_end, os_end)
-                    prices = feed.get_daily(opt_ticker, full_start, full_end)
+                    prices = fetch_price_data(opt_ticker, full_start, full_end)
                     st.success(f"✅ Loaded {len(prices)} days of data")
                 except Exception as exc:
                     st.error(f"❌ Data fetch failed: {exc}")
@@ -407,8 +404,8 @@ def main() -> None:
                     lev_ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
                 else:
                     try:
-                        feed = YFinanceFeed()
-                        lev_ticker_valid = feed.validate_ticker(lev_ticker)
+                        # Validate ticker using cached function
+                        lev_ticker_valid = validate_ticker_cached(lev_ticker)
                         st.session_state['ticker_validation_cache'][cache_key] = lev_ticker_valid
                     except Exception as exc:
                         lev_ticker_valid = False
@@ -547,10 +544,10 @@ def main() -> None:
             
             with st.spinner("📡 Fetching data..."):
                 try:
-                    feed = YFinanceFeed()
+                    # Fetch full range using cached function
                     full_start = min(lev_is_start, lev_os_start)
                     full_end = max(lev_is_end, lev_os_end)
-                    prices = feed.get_daily(lev_ticker, full_start, full_end)
+                    prices = fetch_price_data(lev_ticker, full_start, full_end)
                     st.success(f"✅ Loaded {len(prices)} days of data")
                 except Exception as exc:
                     st.error(f"❌ Data fetch failed: {exc}")
@@ -740,11 +737,10 @@ def main() -> None:
                 if cache_key in st.session_state['ticker_validation_cache']:
                     ticker_valid = st.session_state['ticker_validation_cache'][cache_key]
                 else:
-                    # Validate ticker
+                    # Validate ticker using cached function
                     try:
-                        feed = YFinanceFeed()
-                        ticker_valid = feed.validate_ticker(ticker)
-                        # Cache the result
+                        ticker_valid = validate_ticker_cached(ticker)
+                        # Cache the result in session_state for UI state management
                         st.session_state['ticker_validation_cache'][cache_key] = ticker_valid
                     except Exception as exc:
                         # Network error or other exception
@@ -861,7 +857,7 @@ def main() -> None:
             with col1:
                 start = st.date_input(
                     "Start Date",
-                    help="Backtest start date",
+                    help="Backtest start date (max 10 years from end date)",
                     key="start_date_input",
                     max_value=date.today()
                 )
@@ -873,9 +869,16 @@ def main() -> None:
                     max_value=date.today()
                 )
             
-            # Validate date range: start <= end (show warning only, don't modify session_state after widget creation)
-            if start > end:
-                st.warning(f"⚠️ Start date ({start}) is after end date ({end}). Please adjust the dates.")
+            # Security: Validate date range (max 10 years)
+            MAX_DATE_RANGE_DAYS = 365 * 10  # 10 years
+            if start and end:
+                date_range_days = (end - start).days
+                if date_range_days < 0:
+                    st.error("❌ Start date must be before end date.")
+                elif date_range_days > MAX_DATE_RANGE_DAYS:
+                    st.error(f"❌ Date range too large: {date_range_days} days. Maximum allowed range is 10 years ({MAX_DATE_RANGE_DAYS} days).")
+                elif date_range_days == 0:
+                    st.warning("⚠️ Start and end dates are the same. No data will be available.")
             
             # Threshold input
             threshold_value = None
@@ -887,6 +890,8 @@ def main() -> None:
                 value=threshold_value,
                 step=0.1,
                 format="%0.1f",
+                min_value=-100.0,
+                max_value=100.0,
                 help="Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1% drop)"
             )
             
@@ -900,6 +905,7 @@ def main() -> None:
                 value=shares_per_signal_value if shares_per_signal_value is not None else 10.0,
                 step=1.0,
                 min_value=0.01,
+                max_value=1000000.0,
                 help="Number of shares to buy each time a signal occurs"
             )
             
@@ -917,6 +923,8 @@ def main() -> None:
                     value=fee_rate_value,
                     step=0.01,
                     format="%0.2f",
+                    min_value=0.0,
+                    max_value=10.0,
                     help="Trading fee rate as percentage (e.g., 0.05 for 0.05%)"
                 )
             with col4:
@@ -925,6 +933,8 @@ def main() -> None:
                     value=slippage_rate_value,
                     step=0.01,
                     format="%0.2f",
+                    min_value=0.0,
+                    max_value=10.0,
                     help="Price slippage assumption as percentage (e.g., 0.05 for 0.05%)"
                 )
             
@@ -1220,7 +1230,7 @@ def main() -> None:
                 "...or upload CSV",
                 type=["csv"],
                 accept_multiple_files=False,
-                help="Upload a CSV file to view results"
+                help="Upload a CSV file to view results (max 10MB)"
             )
             run_btn = st.button("📂 Load CSV", type="primary", width='stretch')
 
@@ -1228,6 +1238,18 @@ def main() -> None:
         if view_mode == "Load CSV":
             try:
                 if uploaded is not None:
+                    # Security: Validate file size (max 10MB)
+                    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+                    file_size = len(uploaded.getvalue())
+                    if file_size > MAX_FILE_SIZE:
+                        st.error(f"❌ File too large: {file_size / 1024 / 1024:.2f}MB. Maximum allowed size is 10MB.")
+                        return
+                    
+                    # Security: Validate file type by extension
+                    if not uploaded.name.lower().endswith('.csv'):
+                        st.error("❌ Invalid file type. Only CSV files are allowed.")
+                        return
+                    
                     daily = pd.read_csv(uploaded, index_col=0, parse_dates=True, encoding="utf-8-sig")
                     st.success(f"✅ Loaded CSV from upload ({uploaded.name})")
                 else:
@@ -1243,17 +1265,29 @@ def main() -> None:
                             csv_path = str(path_obj)
                     
                     if not Path(csv_path).exists():
-                        st.error(f"❌ CSV file not found: {csv_path}")
-                        st.info(f"Current working directory: {Path.cwd()}")
-                        csv_files = list(Path.cwd().glob("*.csv"))
-                        if csv_files:
-                            st.info(f"Available CSV files: {[str(f.name) for f in csv_files]}")
+                        st.error("❌ CSV file not found")
+                        # Don't expose file paths in production
+                        if debug_mode:
+                            st.info(f"Current working directory: {Path.cwd()}")
+                            csv_files = list(Path.cwd().glob("*.csv"))
+                            if csv_files:
+                                st.info(f"Available CSV files: {[str(f.name) for f in csv_files]}")
                         return
                     
                     daily = pd.read_csv(csv_path, index_col=0, parse_dates=True, encoding="utf-8-sig")
-                    st.success(f"✅ Loaded CSV from: {csv_path}")
+                    # Don't expose full path in production
+                    if debug_mode:
+                        st.success(f"✅ Loaded CSV from: {csv_path}")
+                    else:
+                        st.success(f"✅ Loaded CSV successfully")
             except Exception as exc:
-                st.error(f"❌ CSV load failed: {exc}")
+                # Sanitize error message: don't expose file paths or system details
+                error_msg = str(exc)
+                # Remove file paths from error message
+                import re
+                error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
+                error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
+                st.error(f"❌ CSV load failed: {error_msg}")
                 # Only show detailed traceback in debug mode
                 if debug_mode:
                     with st.expander("Technical Details"):
@@ -1261,7 +1295,6 @@ def main() -> None:
                         # Sanitize error message to prevent information leakage
                         tb_str = traceback.format_exc()
                         # Remove file paths and replace with generic paths
-                        import re
                         tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
                         st.code(tb_str)
                 else:
@@ -1376,14 +1409,18 @@ def main() -> None:
                 st.error(error)
             return
         
-        # Fetch data with spinner
+        # Fetch data with spinner (using cached function)
         with st.spinner("📡 Fetching stock data..."):
             try:
-                feed = YFinanceFeed()
-                prices = feed.get_daily(ticker, start, end)
+                prices = fetch_price_data(ticker, start, end)
                 st.success(f"✅ Fetched {len(prices)} days of data for {ticker}")
             except Exception as exc:
-                st.error(f"❌ Data fetch failed: {exc}")
+                # Sanitize error message: don't expose system details
+                error_msg = str(exc)
+                import re
+                error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
+                error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
+                st.error(f"❌ Data fetch failed: {error_msg}")
                 # Only show detailed traceback in debug mode
                 if debug_mode:
                     with st.expander("Technical Details"):
@@ -1391,7 +1428,6 @@ def main() -> None:
                         # Sanitize error message to prevent information leakage
                         tb_str = traceback.format_exc()
                         # Remove file paths and replace with generic paths
-                        import re
                         tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
                         st.code(tb_str)
                 else:
@@ -1421,7 +1457,12 @@ def main() -> None:
                 daily, metrics = run_backtest(prices, params)
                 st.success("✅ Backtest completed successfully!")
             except Exception as exc:
-                st.error(f"❌ Backtest failed: {exc}")
+                # Sanitize error message: don't expose system details
+                error_msg = str(exc)
+                import re
+                error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
+                error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
+                st.error(f"❌ Backtest failed: {error_msg}")
                 # Only show detailed traceback in debug mode
                 if debug_mode:
                     with st.expander("Technical Details"):
@@ -1429,30 +1470,45 @@ def main() -> None:
                         # Sanitize error message to prevent information leakage
                         tb_str = traceback.format_exc()
                         # Remove file paths and replace with generic paths
-                        import re
                         tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
                         st.code(tb_str)
                 else:
                     st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
                 return
         
-        # Save CSV automatically
+        # Save CSV automatically - use memory buffer for Streamlit Cloud compatibility
         csv_filename = f"backtest_{ticker}_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.csv"
-        csv_path_full = Path.cwd() / csv_filename
         try:
-            daily.to_csv(csv_path_full, encoding="utf-8-sig")
-            st.success(f"💾 Results saved to: `{csv_filename}`")
+            import io
+            csv_buffer = io.StringIO()
+            daily.to_csv(csv_buffer, encoding="utf-8-sig")
+            csv_data = csv_buffer.getvalue().encode("utf-8-sig")
             
-            # Download button
-            with open(csv_path_full, "rb") as f:
-                st.download_button(
-                    label="📥 Download CSV",
-                    data=f.read(),
-                    file_name=csv_filename,
-                    mime="text/csv",
-                )
+            st.success(f"💾 Results ready for download: `{csv_filename}`")
+            
+            # Download button (always available, no file system dependency)
+            st.download_button(
+                label="📥 Download CSV",
+                data=csv_data,
+                file_name=csv_filename,
+                mime="text/csv",
+            )
+            
+            # Try to save to file system if possible (for local development)
+            if debug_mode:
+                try:
+                    csv_path_full = Path.cwd() / csv_filename
+                    daily.to_csv(csv_path_full, encoding="utf-8-sig")
+                    st.info(f"💾 Also saved to: `{csv_filename}`")
+                except Exception:
+                    pass  # Ignore file system errors in production
         except Exception as exc:
-            st.warning(f"⚠️ Could not save CSV: {exc}")
+            # Sanitize error message
+            error_msg = str(exc)
+            import re
+            error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
+            error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
+            st.warning(f"⚠️ Could not prepare CSV download: {error_msg}")
 
         # Display metrics in columns
         st.subheader("📊 Performance Metrics")

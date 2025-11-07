@@ -4,7 +4,6 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from ..backtest.engine import BacktestParams
 
@@ -56,7 +55,7 @@ ALL_PRESETS = {
 class PresetManager:
     """Manage saved backtest parameter presets."""
     
-    def __init__(self, presets_dir: Optional[Path] = None) -> None:
+    def __init__(self, presets_dir: Path | None = None) -> None:
         """Initialize preset manager.
         
         Args:
@@ -95,7 +94,7 @@ class PresetManager:
         with open(preset_path, "w", encoding="utf-8") as f:
             json.dump(preset_dict, f, indent=2, default=str)
 
-    def load(self, name: str) -> tuple[Optional[BacktestParams], Optional[date], Optional[date]]:
+    def load(self, name: str) -> tuple[BacktestParams | None, date | None, date | None]:
         """Load a preset.
         
         Args:
@@ -110,7 +109,7 @@ class PresetManager:
             return None, None, None
             
         try:
-            with open(preset_path, "r", encoding="utf-8") as f:
+            with open(preset_path, encoding="utf-8") as f:
                 preset_dict = json.load(f)
             
             # Extract start/end dates if present
@@ -149,11 +148,11 @@ class PresetManager:
             
             params = BacktestParams(**preset_dict)
             return params, start_date, end_date
-        except (ValueError, TypeError, KeyError) as e:
+        except (ValueError, TypeError, KeyError):
             # Return None on validation errors
             return None, None, None
 
-    def list_presets(self) -> List[str]:
+    def list_presets(self) -> list[str]:
         """List all saved preset names.
         
         Returns:
@@ -192,7 +191,7 @@ class PresetManager:
 
 
 # Global preset manager instance
-_preset_manager: Optional[PresetManager] = None
+_preset_manager: PresetManager | None = None
 
 
 def get_preset_manager() -> PresetManager:

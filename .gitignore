@@ -37,7 +37,10 @@ env/
 
 # Results (CSV files - optional, uncomment to ignore)
 # results/*.csv
-# !results/.gitkeep
+!results/.gitkeep
+
+# Root directory CSV files (backtest results)
+backtest_*.csv
 
 # Environment
 .env

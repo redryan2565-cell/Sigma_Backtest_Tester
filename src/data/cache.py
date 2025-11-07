@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import pickle
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 
@@ -18,7 +17,7 @@ class DataCache:
 
     def __init__(
         self,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
         ttl_hours: int = 24,
         enabled: bool = True,
     ) -> None:
@@ -48,7 +47,7 @@ class DataCache:
         """Get cache file path for a key."""
         return self.cache_dir / f"{cache_key}.pkl"
 
-    def get(self, ticker: str, start: date, end: date) -> Optional[pd.DataFrame]:
+    def get(self, ticker: str, start: date, end: date) -> pd.DataFrame | None:
         """Retrieve cached data if available and not expired.
         
         Args:
@@ -128,7 +127,7 @@ class DataCache:
             # Silently fail on cache write errors
             pass
 
-    def clear(self, ticker: Optional[str] = None) -> None:
+    def clear(self, ticker: str | None = None) -> None:
         """Clear cache entries.
         
         Args:
@@ -181,7 +180,7 @@ class DataCache:
 
 
 # Global cache instance (singleton pattern)
-_cache_instance: Optional[DataCache] = None
+_cache_instance: DataCache | None = None
 
 
 def get_cache() -> DataCache:

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timedelta
-from typing import Optional
 
 import pandas as pd
 
 from ...config import get_settings
 from ...data.base import PriceFeed
-from ...data.cache import DataCache, get_cache
+from ...data.cache import DataCache
 
 
 class YFinanceFeed(PriceFeed):
@@ -17,7 +16,7 @@ class YFinanceFeed(PriceFeed):
     Returns OHLCV with 'AdjClose' column.
     """
 
-    def __init__(self, session: Optional[object] = None, cache: Optional[DataCache] = None) -> None:
+    def __init__(self, session: object | None = None, cache: DataCache | None = None) -> None:
         self._session = session
         if cache is None:
             # Use settings to configure cache
