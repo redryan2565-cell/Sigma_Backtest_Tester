@@ -10,18 +10,22 @@ import pandas as pd
 import streamlit as st
 
 # Optional imports for enhanced features
+PLOTLY_AVAILABLE = False
+AGGrid_AVAILABLE = False
+OPTION_MENU_AVAILABLE = False
+option_menu = None
+
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
 except ImportError:
-    PLOTLY_AVAILABLE = False
     import matplotlib.pyplot as plt
 
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
     AGGrid_AVAILABLE = True
 except ImportError:
-    AGGrid_AVAILABLE = False
+    pass
 
 try:
     from streamlit_option_menu import option_menu
@@ -131,12 +135,6 @@ def main() -> None:
     # No need to reload here for security and performance
     
     # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
-    # Ensure OPTION_MENU_AVAILABLE is defined (fallback if import failed)
-    try:
-        _ = OPTION_MENU_AVAILABLE
-    except NameError:
-        OPTION_MENU_AVAILABLE = False
-    
     if OPTION_MENU_AVAILABLE:
         if DEVELOPER_MODE:
             # Developer mode: show all tabs
