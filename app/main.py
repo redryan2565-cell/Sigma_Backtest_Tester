@@ -834,10 +834,19 @@ def main() -> None:
             ticker_valid = True
             ticker_error_message = None
 
+            # Universal preset tickers are always valid
+            universal_preset_tickers = ['TQQQ', 'SOXL', 'QLD']
+            
             # Skip validation if universal preset is loaded (preset tickers are always valid)
+            # Also skip validation for known universal preset tickers
             if universal_preset:
                 ticker_valid = True
-            elif ticker:
+            elif ticker and ticker.upper() in [t.upper() for t in universal_preset_tickers]:
+                # Known universal preset tickers are always valid
+                ticker_valid = True
+            elif not ticker:
+                ticker_valid = False
+            else:
                 # Initialize validation state in session_state if not present
                 if 'ticker_validation_cache' not in st.session_state:
                     st.session_state['ticker_validation_cache'] = {}
@@ -855,9 +864,10 @@ def main() -> None:
                         # Cache the result in session_state for UI state management
                         st.session_state['ticker_validation_cache'][cache_key] = ticker_valid
                     except Exception as exc:
-                        # Network error or other exception
-                        ticker_valid = False
-                        ticker_error_message = f"⚠️ 티커 검증 중 오류가 발생했습니다: {exc}"
+                        # Network error or other exception - don't fail validation on network errors
+                        # Just show warning, but allow the ticker to be used
+                        ticker_valid = True  # Allow ticker on network errors
+                        ticker_error_message = f"⚠️ 티커 검증 중 오류가 발생했습니다. 네트워크 문제일 수 있습니다: {exc}"
 
                 if not ticker_valid:
                     if ticker_error_message:
@@ -867,9 +877,9 @@ def main() -> None:
                         safe_display_ticker = ticker[:20]  # Limit length
                         st.error(f"❌ 입력한 Ticker는 존재하지 않거나 지원되지 않습니다. (예: '{safe_display_ticker}')\n실제 존재하는 티커를 입력하세요. 예: 'TQQQ', 'AAPL', 'SPY'")
                 else:
-                    st.success(f"✅ 티커 '{ticker}'가 유효합니다.")
-            else:
-                ticker_valid = False
+                    # Only show success if validation actually ran (not skipped)
+                    if ticker and not universal_preset and ticker.upper() not in [t.upper() for t in universal_preset_tickers]:
+                        st.success(f"✅ 티커 '{ticker}'가 유효합니다.")
 
             # Presets section - Quick Presets first, then user presets
             if PRESETS_AVAILABLE and get_preset_manager:
