@@ -207,27 +207,19 @@ def main() -> None:
     if view_mode == "About":
         st.header("📖 About Normal Dip Backtest")
         st.markdown("""
-        ### Shares-based Mode
-        - Enter number of shares to buy per signal
-        - Each signal day will buy the specified number of shares at market price
-
-        ### Parameters
-        - **Ticker**: Stock symbol (e.g., TQQQ, AAPL)
-        - **Date Range**: Start and end dates for backtest
-        - **Threshold**: Daily return threshold as percentage (must be negative, e.g., -4.1 for -4.1%)
-        - **Shares per Signal**: Number of shares to buy each time a dip signal occurs
-        - **Fee Rate**: Trading fee per transaction
-        - **Slippage Rate**: Price impact assumption
+        ### 주요 기능
+        
+        **Shares-based Mode**: 하락 신호 발생 시 지정한 주식 수만큼 자동으로 매수합니다.
+        
+        ### 파라미터 설명
+        
+        - **Ticker**: 백테스트할 주식 티커 심볼 (예: TQQQ, AAPL)
+        - **Date Range**: 백테스트 시작일과 종료일
+        - **Threshold**: 일일 수익률 임계값 (음수 값, 예: -4.1은 -4.1% 하락 시 매수)
+        - **Shares per Signal**: 신호 발생 시 매수할 주식 수
+        - **Fee Rate**: 거래 시 발생하는 수수료 비율
+        - **Slippage Rate**: 주문 체결 시 발생하는 가격 차이 비율
         """)
-
-        st.header("🚀 Enhanced Features")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.info("**Plotly Charts**\n\nInteractive zoom, pan, and hover")
-        with col2:
-            st.info("**AgGrid Tables**\n\nSort, filter, and export data")
-        with col3:
-            st.info("**Auto CSV Save**\n\nResults automatically saved")
 
         return
 
@@ -991,55 +983,54 @@ def main() -> None:
                 if saved_presets:
                     st.subheader("📁 My Presets")
                     
-                    col_load1, col_load2 = st.columns([3, 1])
-                    with col_load1:
-                        selected_preset_name = st.selectbox(
-                            "Select Preset",
-                            options=[""] + saved_presets,
-                            index=0,
-                            help="세션에 저장된 preset을 불러옵니다",
-                            key="preset_loader"
-                        )
+                    # Select preset dropdown
+                    selected_preset_name = st.selectbox(
+                        "Select Preset",
+                        options=[""] + saved_presets,
+                        index=0,
+                        help="세션에 저장된 preset을 불러옵니다",
+                        key="preset_loader"
+                    )
 
-                    with col_load2:
-                        if st.button("Load", disabled=not selected_preset_name, key="load_preset_btn"):
-                            loaded_params, loaded_start_date, loaded_end_date = preset_manager.load(selected_preset_name)
-                            if loaded_params:
-                                # Clear universal preset if user preset is loaded
-                                if 'universal_preset_loaded' in st.session_state:
-                                    del st.session_state['universal_preset_loaded']
-                                if 'universal_preset' in st.session_state:
-                                    del st.session_state['universal_preset']
-                                
-                                st.session_state['loaded_preset'] = loaded_params
-                                st.session_state['loaded_preset_name'] = selected_preset_name
-                                # Reset user_modified_ticker when loading a preset
-                                st.session_state['user_modified_ticker'] = False
-                                # Store dates in session_state and update date inputs
-                                if loaded_start_date:
-                                    st.session_state['loaded_start_date'] = loaded_start_date
-                                    st.session_state['start_date_input'] = loaded_start_date
-                                if loaded_end_date:
-                                    st.session_state['loaded_end_date'] = loaded_end_date
-                                    st.session_state['end_date_input'] = loaded_end_date
-                                st.success(f"✅ Loaded: {selected_preset_name}")
-                                st.rerun()
-                            else:
-                                st.error("❌ Load failed")
-
-                    # Delete button and status
+                    # Load and Delete buttons in same row, same size
                     if selected_preset_name:
-                        col_del1, col_del2 = st.columns([3, 1])
-                        with col_del2:
-                            if st.button("🗑️", disabled=not selected_preset_name, key="delete_preset_btn", help="Delete preset"):
+                        col_btn1, col_btn2 = st.columns(2)
+                        with col_btn1:
+                            if st.button("Load", disabled=not selected_preset_name, key="load_preset_btn", use_container_width=True):
+                                loaded_params, loaded_start_date, loaded_end_date = preset_manager.load(selected_preset_name)
+                                if loaded_params:
+                                    # Clear universal preset if user preset is loaded
+                                    if 'universal_preset_loaded' in st.session_state:
+                                        del st.session_state['universal_preset_loaded']
+                                    if 'universal_preset' in st.session_state:
+                                        del st.session_state['universal_preset']
+                                    
+                                    st.session_state['loaded_preset'] = loaded_params
+                                    st.session_state['loaded_preset_name'] = selected_preset_name
+                                    # Reset user_modified_ticker when loading a preset
+                                    st.session_state['user_modified_ticker'] = False
+                                    # Store dates in session_state and update date inputs
+                                    if loaded_start_date:
+                                        st.session_state['loaded_start_date'] = loaded_start_date
+                                        st.session_state['start_date_input'] = loaded_start_date
+                                    if loaded_end_date:
+                                        st.session_state['loaded_end_date'] = loaded_end_date
+                                        st.session_state['end_date_input'] = loaded_end_date
+                                    st.success(f"✅ Loaded: {selected_preset_name}")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Load failed")
+                        with col_btn2:
+                            if st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn", help="Delete preset", use_container_width=True):
                                 if preset_manager.delete(selected_preset_name):
                                     st.success(f"✅ Deleted")
                                     st.rerun()
 
-                    # Show loaded preset status (compact)
+                    # Show loaded preset status
                     if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                         preset_name = st.session_state.get('loaded_preset_name', 'Unknown')
                         st.caption(f"✓ Using: **{preset_name}**")
+                        # Clear button - same size as Load/Delete buttons
                         if st.button("Clear", key="clear_preset_btn", use_container_width=True):
                             if 'loaded_preset' in st.session_state:
                                 del st.session_state['loaded_preset']
