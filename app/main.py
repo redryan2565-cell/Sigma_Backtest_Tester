@@ -9,6 +9,26 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# Optional imports for enhanced features
+try:
+    import plotly.graph_objects as go
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    import matplotlib.pyplot as plt
+
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+    AGGrid_AVAILABLE = True
+except ImportError:
+    AGGrid_AVAILABLE = False
+
+try:
+    from streamlit_option_menu import option_menu
+    OPTION_MENU_AVAILABLE = True
+except ImportError:
+    OPTION_MENU_AVAILABLE = False
+
 # Fix import path for Streamlit execution
 if Path(__file__).parent.parent.parent.exists():
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
