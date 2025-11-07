@@ -883,6 +883,12 @@ def main() -> None:
             elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                 loaded_params = st.session_state['loaded_preset']
 
+            # Handle pending ticker update from universal preset selection (before widget creation)
+            if 'pending_ticker_update' in st.session_state:
+                st.session_state['ticker_input'] = st.session_state['pending_ticker_update']
+                st.session_state['user_modified_ticker'] = False
+                del st.session_state['pending_ticker_update']
+            
             # Initialize ticker_input in session_state if not present
             if 'ticker_input' not in st.session_state:
                 if universal_preset:
@@ -1010,10 +1016,8 @@ def main() -> None:
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
                                 
-                                # Update ticker directly in session_state - always update when preset is selected
-                                st.session_state['ticker_input'] = universal_preset.ticker
-                                # Reset user_modified_ticker flag when preset updates ticker
-                                st.session_state['user_modified_ticker'] = False
+                                # Set pending ticker update (will be applied before widget creation on next rerun)
+                                st.session_state['pending_ticker_update'] = universal_preset.ticker
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
@@ -1026,8 +1030,8 @@ def main() -> None:
                         # Reset ticker only if it was set by universal preset (not user-modified)
                         current_ticker = st.session_state.get('ticker_input', '')
                         if current_ticker in ['TQQQ', 'SOXL', 'QLD'] and not st.session_state.get('user_modified_ticker', False):
-                            st.session_state['ticker_input'] = 'TQQQ'
-                            st.session_state['user_modified_ticker'] = False
+                            # Set pending ticker update (will be applied before widget creation on next rerun)
+                            st.session_state['pending_ticker_update'] = 'TQQQ'
                         # If user modified the ticker, keep it as is
                         
                         st.rerun()
