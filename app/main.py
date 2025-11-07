@@ -103,7 +103,7 @@ except ImportError as e:
     run_search = None
 
 try:
-    from src.storage.presets import ALL_PRESETS, get_preset_manager, reset_preset_manager
+    from src.storage.presets import ALL_PRESETS, get_preset_manager, reset_preset_manager, get_universal_preset, UNIVERSAL_PRESETS
     PRESETS_AVAILABLE = True
 except ImportError as e:
     PRESETS_AVAILABLE = False
@@ -111,6 +111,8 @@ except ImportError as e:
     PRESETS_ERROR = str(e)
     ALL_PRESETS = {}
     get_preset_manager = None
+    get_universal_preset = None
+    UNIVERSAL_PRESETS = {}
 
 try:
     from src.visualization.heatmap import create_monthly_returns_heatmap
@@ -807,9 +809,15 @@ def main() -> None:
             st.header("Parameters")
 
             # Ticker input with validation
+            ticker_default = "TQQQ"
+            if universal_preset:
+                ticker_default = universal_preset.ticker
+            elif 'ticker_input' in st.session_state:
+                ticker_default = st.session_state['ticker_input']
+            
             ticker = st.text_input(
                 "Ticker",
-                value="TQQQ",
+                value=ticker_default,
                 help="Stock ticker symbol (e.g., TQQQ, AAPL, SPY)",
                 key="ticker_input"
             ).strip().upper()
@@ -852,15 +860,81 @@ def main() -> None:
             else:
                 ticker_valid = False
 
-            # Presets section - Load preset first (before inputs)
+            # Presets section - Quick Presets first, then user presets
             if PRESETS_AVAILABLE and get_preset_manager:
                 preset_manager = get_preset_manager()
                 saved_presets = preset_manager.list_presets()
+                
+                # Quick Presets (Universal Presets) - Always shown
+                st.subheader("📌 Quick Presets")
+                universal_preset_options = list(UNIVERSAL_PRESETS.keys()) if UNIVERSAL_PRESETS else []
+                
+                if universal_preset_options:
+                    # Get current selection from session_state to maintain state after rerun
+                    current_selection = st.session_state.get('universal_preset_loaded', "")
+                    if current_selection not in universal_preset_options:
+                        current_selection = ""
+                    
+                    # Determine index for radio button
+                    radio_index = 0
+                    if current_selection and current_selection in universal_preset_options:
+                        radio_index = universal_preset_options.index(current_selection) + 1
+                    
+                    selected_universal = st.radio(
+                        "Select Quick Preset",
+                        options=[""] + universal_preset_options,
+                        index=radio_index,
+                        horizontal=True,
+                        help="범용 preset을 선택하면 모든 설정이 자동으로 채워집니다",
+                        key="universal_preset_selector"
+                    )
+                    
+                    # Handle universal preset selection
+                    if selected_universal:
+                        # Check if this is a new selection (not already loaded)
+                        current_loaded = st.session_state.get('universal_preset_loaded', "")
+                        if selected_universal != current_loaded and get_universal_preset:
+                            universal_preset = get_universal_preset(selected_universal)
+                            if universal_preset:
+                                # Clear user preset if universal preset is selected
+                                if 'loaded_preset' in st.session_state:
+                                    del st.session_state['loaded_preset']
+                                if 'loaded_preset_name' in st.session_state:
+                                    del st.session_state['loaded_preset_name']
+                                
+                                # Store universal preset in session_state
+                                st.session_state['universal_preset_loaded'] = selected_universal
+                                st.session_state['universal_preset'] = universal_preset
+                                
+                                # Apply preset values immediately by updating session_state
+                                st.session_state['start_date_input'] = universal_preset.start_date
+                                st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
+                                st.session_state['ticker_input'] = universal_preset.ticker
+                                
+                                # Trigger rerun to apply values
+                                st.rerun()
+                    elif 'universal_preset_loaded' in st.session_state and st.session_state['universal_preset_loaded']:
+                        # Clear universal preset if empty selection (user deselected)
+                        del st.session_state['universal_preset_loaded']
+                        if 'universal_preset' in st.session_state:
+                            del st.session_state['universal_preset']
+                        # Reset ticker if it was set by universal preset
+                        if 'ticker_input' in st.session_state and st.session_state['ticker_input'] in ['TQQQ', 'SOXL', 'QLD']:
+                            st.session_state['ticker_input'] = 'TQQQ'
+                        st.rerun()
+                    
+                    # Show current universal preset status
+                    if 'universal_preset_loaded' in st.session_state:
+                        preset_name = st.session_state['universal_preset_loaded']
+                        st.caption(f"✓ Using: **{preset_name}**")
+                else:
+                    st.caption("No quick presets available")
+                
+                st.divider()
 
                 # Load preset UI (프리셋이 있을 때만 표시)
                 if saved_presets:
-                    st.subheader("📁 Load Saved Preset")
-                    st.caption("💡 현재 브라우저 세션에서 저장한 preset을 불러옵니다. 브라우저를 닫으면 사라집니다.")
+                    st.subheader("📁 My Presets")
                     
                     col_load1, col_load2 = st.columns([3, 1])
                     with col_load1:
@@ -868,7 +942,7 @@ def main() -> None:
                             "Select Preset",
                             options=[""] + saved_presets,
                             index=0,
-                            help="현재 세션에 저장된 preset을 선택하세요",
+                            help="세션에 저장된 preset을 불러옵니다",
                             key="preset_loader"
                         )
 
@@ -876,33 +950,40 @@ def main() -> None:
                         if st.button("Load", disabled=not selected_preset_name, key="load_preset_btn"):
                             loaded_params, loaded_start_date, loaded_end_date = preset_manager.load(selected_preset_name)
                             if loaded_params:
+                                # Clear universal preset if user preset is loaded
+                                if 'universal_preset_loaded' in st.session_state:
+                                    del st.session_state['universal_preset_loaded']
+                                if 'universal_preset' in st.session_state:
+                                    del st.session_state['universal_preset']
+                                
                                 st.session_state['loaded_preset'] = loaded_params
                                 st.session_state['loaded_preset_name'] = selected_preset_name
                                 # Store dates in session_state and update date inputs
                                 if loaded_start_date:
                                     st.session_state['loaded_start_date'] = loaded_start_date
-                                    st.session_state['start_date_input'] = loaded_start_date  # Update date_input key
+                                    st.session_state['start_date_input'] = loaded_start_date
                                 if loaded_end_date:
                                     st.session_state['loaded_end_date'] = loaded_end_date
-                                    st.session_state['end_date_input'] = loaded_end_date  # Update date_input key
+                                    st.session_state['end_date_input'] = loaded_end_date
                                 st.success(f"✅ Loaded: {selected_preset_name}")
                                 st.rerun()
                             else:
                                 st.error("❌ Load failed")
 
-                    # Delete button
+                    # Delete button and status
                     if selected_preset_name:
                         col_del1, col_del2 = st.columns([3, 1])
                         with col_del2:
-                            if st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
+                            if st.button("🗑️", disabled=not selected_preset_name, key="delete_preset_btn", help="Delete preset"):
                                 if preset_manager.delete(selected_preset_name):
-                                    st.success(f"✅ Deleted: {selected_preset_name}")
+                                    st.success(f"✅ Deleted")
                                     st.rerun()
 
-                    # Show loaded preset info and clear button (moved here)
+                    # Show loaded preset status (compact)
                     if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
-                        st.info(f"💡 Using preset: **{st.session_state.get('loaded_preset_name', 'Unknown')}** - All fields populated from preset. You can modify values as needed.")
-                        if st.button("Clear Loaded Preset", key="clear_preset_btn"):
+                        preset_name = st.session_state.get('loaded_preset_name', 'Unknown')
+                        st.caption(f"✓ Using: **{preset_name}**")
+                        if st.button("Clear", key="clear_preset_btn", use_container_width=True):
                             if 'loaded_preset' in st.session_state:
                                 del st.session_state['loaded_preset']
                             if 'loaded_preset_name' in st.session_state:
@@ -920,12 +1001,11 @@ def main() -> None:
 
                 # Save Current Settings UI (항상 표시 - 프리셋이 없어도 저장 가능)
                 st.subheader("💾 Save Current Settings")
-                st.caption("💡 현재 설정을 세션에 저장합니다. 브라우저를 닫으면 사라집니다.")
                 
                 new_preset_name = st.text_input(
                     "Preset Name",
                     value="",
-                    help="저장할 preset의 이름을 입력하세요",
+                    help="현재 설정을 세션에 저장합니다",
                     key="save_preset_name"
                 )
 
@@ -939,7 +1019,6 @@ def main() -> None:
 
                 # Import/Export JSON File section
                 st.subheader("📤 Import/Export JSON File")
-                st.caption("💡 Preset을 JSON 파일로 저장하거나 불러옵니다. 다른 컴퓨터나 나중에 사용할 수 있습니다.")
                 
                 # Export (Download) button
                 if saved_presets:
@@ -948,24 +1027,24 @@ def main() -> None:
                         all_presets = preset_manager.export_all()
                         json_data = json.dumps(all_presets, indent=2, ensure_ascii=False)
                         st.download_button(
-                            "📥 Export Presets (Download JSON)",
+                            "📥 Export",
                             data=json_data,
                             file_name=f"presets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json",
-                            help="현재 세션의 모든 preset을 JSON 파일로 다운로드합니다",
+                            help="세션의 모든 preset을 JSON으로 다운로드",
                             key="download_presets_btn"
                         )
                     except AttributeError:
                         # If export_all is not available (old PresetManager), skip download button
                         pass
                 else:
-                    st.info("ℹ️ 저장된 preset이 없습니다. Export하려면 먼저 preset을 저장하세요.")
+                    st.caption("No presets to export")
                 
                 # Import (Upload) button
                 uploaded_file = st.file_uploader(
-                    "Import Presets (Upload JSON)",
+                    "Import JSON",
                     type=["json"],
-                    help="이전에 다운로드한 preset JSON 파일을 업로드하여 불러옵니다",
+                    help="JSON 파일을 업로드하여 preset 불러오기",
                     key="upload_presets_file"
                 )
                 if uploaded_file is not None:
@@ -1023,17 +1102,26 @@ def main() -> None:
 
             # Get loaded preset values (if any)
             loaded_params = None
-            if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
+            universal_preset = None
+            if 'universal_preset' in st.session_state and st.session_state.get('universal_preset'):
+                universal_preset = st.session_state['universal_preset']
+            elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                 loaded_params = st.session_state['loaded_preset']
 
             # Date inputs (with loaded preset dates if available)
             # Initialize session_state for date inputs if not present
-            # Note: When using key parameter, Streamlit automatically manages session_state
-            # So we only need to set initial values, not pass value parameter
-            if 'start_date_input' not in st.session_state:
-                st.session_state['start_date_input'] = date(2016, 1, 1)
-            if 'end_date_input' not in st.session_state:
-                st.session_state['end_date_input'] = date.today()
+            if universal_preset:
+                # Universal preset dates are already set in selection handler
+                # Just ensure they exist
+                if 'start_date_input' not in st.session_state:
+                    st.session_state['start_date_input'] = universal_preset.start_date
+                if 'end_date_input' not in st.session_state:
+                    st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
+            else:
+                if 'start_date_input' not in st.session_state:
+                    st.session_state['start_date_input'] = date(2016, 1, 1)
+                if 'end_date_input' not in st.session_state:
+                    st.session_state['end_date_input'] = date.today()
 
             col1, col2 = st.columns(2)
             with col1:
@@ -1064,7 +1152,9 @@ def main() -> None:
 
             # Threshold input
             threshold_value = None
-            if loaded_params:
+            if universal_preset:
+                threshold_value = universal_preset.params.threshold * 100.0 if universal_preset.params.threshold else None
+            elif loaded_params:
                 threshold_value = loaded_params.threshold * 100.0 if loaded_params.threshold else None
 
             threshold = st.number_input(
@@ -1079,7 +1169,9 @@ def main() -> None:
 
             # Shares per Signal input (always use shares-based mode)
             shares_per_signal_value = None
-            if loaded_params:
+            if universal_preset:
+                shares_per_signal_value = universal_preset.params.shares_per_signal
+            elif loaded_params:
                 shares_per_signal_value = loaded_params.shares_per_signal
 
             shares_per_signal = st.number_input(
@@ -1094,7 +1186,10 @@ def main() -> None:
             # Fee and slippage
             fee_rate_value = None
             slippage_rate_value = None
-            if loaded_params:
+            if universal_preset:
+                fee_rate_value = universal_preset.params.fee_rate * 100.0 if universal_preset.params.fee_rate else None
+                slippage_rate_value = universal_preset.params.slippage_rate * 100.0 if universal_preset.params.slippage_rate else None
+            elif loaded_params:
                 fee_rate_value = loaded_params.fee_rate * 100.0 if loaded_params.fee_rate else None
                 slippage_rate_value = loaded_params.slippage_rate * 100.0 if loaded_params.slippage_rate else None
 
@@ -1134,7 +1229,17 @@ def main() -> None:
             tp_cooldown_days = 0
             sl_cooldown_days = 0
 
-            if loaded_params:
+            if universal_preset:
+                tp_threshold = (universal_preset.params.tp_threshold * 100.0) if universal_preset.params.tp_threshold else None
+                sl_threshold = (universal_preset.params.sl_threshold * 100.0) if universal_preset.params.sl_threshold else None
+                tp_sell_percentage = universal_preset.params.tp_sell_percentage
+                sl_sell_percentage = universal_preset.params.sl_sell_percentage
+                reset_baseline_after_tp_sl = universal_preset.params.reset_baseline_after_tp_sl
+                tp_hysteresis = universal_preset.params.tp_hysteresis * 100.0
+                sl_hysteresis = universal_preset.params.sl_hysteresis * 100.0
+                tp_cooldown_days = universal_preset.params.tp_cooldown_days
+                sl_cooldown_days = universal_preset.params.sl_cooldown_days
+            elif loaded_params:
                 tp_threshold = (loaded_params.tp_threshold * 100.0) if loaded_params.tp_threshold else None
                 sl_threshold = (loaded_params.sl_threshold * 100.0) if loaded_params.sl_threshold else None
                 tp_sell_percentage = loaded_params.tp_sell_percentage
@@ -1149,12 +1254,14 @@ def main() -> None:
             enable_tp = st.checkbox(
                 "Enable Take-Profit (TP)",
                 value=(tp_threshold is not None),
+                disabled=(universal_preset is not None),  # Disable if universal preset is loaded
                 help="Enable take-profit trigger (can be used independently from stop-loss)"
             )
 
             enable_sl = st.checkbox(
                 "Enable Stop-Loss (SL)",
                 value=(sl_threshold is not None),
+                disabled=(universal_preset is not None),  # Disable if universal preset is loaded
                 help="Enable stop-loss trigger (can be used independently from take-profit)"
             )
 

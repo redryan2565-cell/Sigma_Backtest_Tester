@@ -21,6 +21,19 @@ class HysteresisCooldownPreset:
     sl_cooldown_days: int
 
 
+@dataclass(frozen=True)
+class UniversalPreset:
+    """Universal preset for quick setup with ticker and parameters.
+    
+    These presets are available across all sessions and devices.
+    """
+    name: str  # "TQQQ", "SOXL", "QLD"
+    ticker: str
+    params: BacktestParams
+    start_date: date  # Fixed start date
+    end_date: date | None  # None means use current date
+
+
 # Preset definitions
 CONSERVATIVE_PRESET = HysteresisCooldownPreset(
     name="Conservative",
@@ -52,6 +65,109 @@ ALL_PRESETS = {
     "Moderate": MODERATE_PRESET,
     "Aggressive": AGGRESSIVE_PRESET,
 }
+
+# Universal presets (available across all sessions)
+UNIVERSAL_PRESETS: dict[str, UniversalPreset] = {}
+
+# Initialize universal presets
+def _init_universal_presets() -> None:
+    """Initialize universal presets with predefined values."""
+    global UNIVERSAL_PRESETS
+    
+    # Common settings
+    common_start_date = date(2020, 1, 1)
+    common_shares = 1.0
+    common_tp_sl_enabled = False
+    
+    # TQQQ preset
+    tqqq_params = BacktestParams(
+        threshold=-0.041,  # -4.1%
+        shares_per_signal=common_shares,
+        fee_rate=0.008,  # 0.8%
+        slippage_rate=0.0013,  # 0.13%
+        enable_tp_sl=common_tp_sl_enabled,
+        tp_threshold=None,
+        sl_threshold=None,
+        tp_sell_percentage=1.0,
+        sl_sell_percentage=1.0,
+        reset_baseline_after_tp_sl=True,
+        tp_hysteresis=0.0,
+        sl_hysteresis=0.0,
+        tp_cooldown_days=0,
+        sl_cooldown_days=0,
+    )
+    UNIVERSAL_PRESETS["TQQQ"] = UniversalPreset(
+        name="TQQQ",
+        ticker="TQQQ",
+        params=tqqq_params,
+        start_date=common_start_date,
+        end_date=None,  # Use current date
+    )
+    
+    # SOXL preset
+    soxl_params = BacktestParams(
+        threshold=-0.072,  # -7.2%
+        shares_per_signal=common_shares,
+        fee_rate=0.0075,  # 0.75%
+        slippage_rate=-0.042,  # -4.2% (as specified by user)
+        enable_tp_sl=common_tp_sl_enabled,
+        tp_threshold=None,
+        sl_threshold=None,
+        tp_sell_percentage=1.0,
+        sl_sell_percentage=1.0,
+        reset_baseline_after_tp_sl=True,
+        tp_hysteresis=0.0,
+        sl_hysteresis=0.0,
+        tp_cooldown_days=0,
+        sl_cooldown_days=0,
+    )
+    UNIVERSAL_PRESETS["SOXL"] = UniversalPreset(
+        name="SOXL",
+        ticker="SOXL",
+        params=soxl_params,
+        start_date=common_start_date,
+        end_date=None,  # Use current date
+    )
+    
+    # QLD preset
+    qld_params = BacktestParams(
+        threshold=-0.025,  # -2.5%
+        shares_per_signal=common_shares,
+        fee_rate=0.0095,  # 0.95%
+        slippage_rate=-0.0089,  # -0.89% (as specified by user)
+        enable_tp_sl=common_tp_sl_enabled,
+        tp_threshold=None,
+        sl_threshold=None,
+        tp_sell_percentage=1.0,
+        sl_sell_percentage=1.0,
+        reset_baseline_after_tp_sl=True,
+        tp_hysteresis=0.0,
+        sl_hysteresis=0.0,
+        tp_cooldown_days=0,
+        sl_cooldown_days=0,
+    )
+    UNIVERSAL_PRESETS["QLD"] = UniversalPreset(
+        name="QLD",
+        ticker="QLD",
+        params=qld_params,
+        start_date=common_start_date,
+        end_date=None,  # Use current date
+    )
+
+# Initialize universal presets on module load
+_init_universal_presets()
+
+
+def get_universal_preset(name: str) -> UniversalPreset | None:
+    """Get a universal preset by name.
+    
+    Args:
+        name: Preset name ("TQQQ", "SOXL", or "QLD")
+        
+    Returns:
+        UniversalPreset if found, None otherwise.
+    """
+    return UNIVERSAL_PRESETS.get(name.upper())
 
 
 def _is_streamlit_cloud() -> bool:
