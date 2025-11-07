@@ -19,13 +19,13 @@ def generate_param_space(
     base_params: BacktestParams | None = None,
 ) -> list[BacktestParams]:
     """Generate parameter space for optimization.
-    
+
     Args:
         mode: "grid" or "random"
         seed: Random seed for random mode
         budget_n: Number of samples for random mode
         base_params: Base parameters to inherit from (allocation mode, fee, etc.)
-        
+
     Returns:
         List of BacktestParams to test
     """
@@ -132,9 +132,9 @@ def generate_leverage_param_space(
     base_params: BacktestParams | None = None,
 ) -> list[BacktestParams]:
     """Generate parameter space for Leverage Mode optimization.
-    
+
     Threshold is fixed, only TP/SL combinations are explored.
-    
+
     Args:
         threshold: Fixed threshold value (as decimal, e.g., -0.041 for -4.1%)
         tp_range: Tuple of (min, max) TP threshold percentages (e.g., (15.0, 50.0))
@@ -147,7 +147,7 @@ def generate_leverage_param_space(
         budget_n: Number of samples for random mode
         seed: Random seed for random mode
         base_params: Base parameters to inherit from (fee, slippage, etc.)
-        
+
     Returns:
         List of BacktestParams with fixed threshold and varying TP/SL combinations
     """
@@ -256,14 +256,14 @@ def evaluate_params(
     split: dict[str, tuple[date, date]],
 ) -> dict[str, dict[str, float]]:
     """Evaluate parameters on IS and OS splits.
-    
+
     Optimized version: filters prices once and avoids unnecessary copies.
-    
+
     Args:
         params: BacktestParams to evaluate
         prices: Full price DataFrame
         split: Dict with "is" and "os" keys, each containing (start_date, end_date)
-        
+
     Returns:
         Dict with "is" and "os" keys, each containing metrics dict
     """
@@ -346,12 +346,12 @@ def evaluate_params_optimized(
     split: dict[str, tuple[date, date]],
 ) -> dict[str, dict[str, float]]:
     """Optimized version of evaluate_params that uses pre-filtered prices.
-    
+
     Args:
         params: BacktestParams to evaluate
         split_prices_cache: Pre-filtered prices for each split
         split: Dict with "is" and "os" keys (for reference)
-        
+
     Returns:
         Dict with "is" and "os" keys, each containing metrics dict
     """
@@ -428,7 +428,7 @@ def evaluate_params_optimized(
 
 def rank_key(row: dict[str, float]) -> tuple[float, ...]:
     """Ranking function for parameter selection.
-    
+
     Returns tuple for lexicographic ordering:
     - (-1e9,) if constraints fail
     - (CAGR, Sortino, Sharpe, CumulativeReturn) if constraints pass
@@ -454,10 +454,10 @@ def rank_key(row: dict[str, float]) -> tuple[float, ...]:
 
 def rank_results(is_results: list[dict[str, any]]) -> tuple[BacktestParams | None, dict[str, int]]:
     """Rank IS results and return best parameter with constraint statistics.
-    
+
     Args:
         is_results: List of dicts with "params" and "metrics" keys
-        
+
     Returns:
         Tuple of (best BacktestParams or None, constraint_stats dict)
         constraint_stats contains: total, passed, failed_mdd, failed_trades, failed_hitdays
@@ -529,14 +529,14 @@ def run_search(
     save_every: int | None = None,
 ) -> tuple[pd.DataFrame, BacktestParams | None, dict[str, int]]:
     """Run parameter search.
-    
+
     Args:
         param_space: List of BacktestParams to test
         prices: Full price DataFrame
         split: Dict with "is" and "os" keys
         output_dir: Directory to save CSV results
         save_every: Save intermediate results every N samples (None to disable)
-        
+
     Returns:
         Tuple of (summary DataFrame, best_params, constraint_stats)
     """

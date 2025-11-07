@@ -14,7 +14,7 @@ from .metrics import max_drawdown, xirr
 class BacktestParams:
     threshold: float
     weekly_budget: float | None = None
-    mode: AllocationMode | None = None
+    mode: str | None = None  # Legacy field, no longer used (budget mode removed)
     carryover: bool | None = None
     shares_per_signal: float | None = None
     fee_rate: float = 0.0005
@@ -90,11 +90,11 @@ def compute_ledger(
     allocation: pd.Series,
 ) -> pd.DataFrame:
     """Compute complete accounting ledger with all intermediate columns.
-    
+
     Supports Take-Profit and Stop-Loss functionality when enabled.
     Processes days sequentially to handle dynamic sell events.
     Uses shares-based mode only (budget-based mode removed).
-    
+
     Returns DataFrame with columns:
     DailyRet, Signal, Mode, AdjClose, PxExec, BuyAmt, Fee, SharesBought,
     CashFlow, CumCashFlow, CumShares, Equity, CashBalance, NAV,
@@ -1020,9 +1020,9 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> tuple[pd.DataF
     idx = ledger.index
     nav = ledger["NAV"]
     equity = ledger["Equity"]
-    cum_cash_flow = ledger["CumCashFlow"]
+    ledger["CumCashFlow"]
     cum_invested = ledger["CumInvested"]
-    drawdown = ledger["Drawdown"]
+    ledger["Drawdown"]
     signals = ledger["Signal"].astype(bool)
 
     # Find first investment date
@@ -1100,7 +1100,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> tuple[pd.DataF
     # MDD: computed from Portfolio Return ratio (Equity / PositionCost) to reflect actual portfolio losses
     # This correctly shows portfolio drawdown relative to cost basis even when TP/SL triggers and baseline resets
     # Portfolio Return ratio is continuous and not reset by TP/SL, so MDD accurately tracks portfolio decline
-    portfolio_return = ledger["PortfolioReturn"]
+    ledger["PortfolioReturn"]
     position_cost = ledger["PositionCost"]
 
     # Calculate Portfolio Return ratio (Equity / PositionCost) for MDD calculation

@@ -10,7 +10,7 @@ import pandas as pd
 
 class DataCache:
     """Disk-based cache for price data with TTL support.
-    
+
     Caches price data using pickle format. Cache keys are based on
     (ticker, start_date, end_date). Cache entries expire after TTL hours.
     """
@@ -22,7 +22,7 @@ class DataCache:
         enabled: bool = True,
     ) -> None:
         """Initialize cache.
-        
+
         Args:
             cache_dir: Directory for cache files. Defaults to .cache/ in project root.
             ttl_hours: Time to live in hours. Defaults to 24.
@@ -49,12 +49,12 @@ class DataCache:
 
     def get(self, ticker: str, start: date, end: date) -> pd.DataFrame | None:
         """Retrieve cached data if available and not expired.
-        
+
         Args:
             ticker: Stock ticker symbol.
             start: Start date.
             end: End date.
-            
+
         Returns:
             Cached DataFrame if found and valid, None otherwise.
         """
@@ -101,7 +101,7 @@ class DataCache:
 
     def set(self, ticker: str, start: date, end: date, data: pd.DataFrame) -> None:
         """Store data in cache.
-        
+
         Args:
             ticker: Stock ticker symbol.
             start: Start date.
@@ -129,7 +129,7 @@ class DataCache:
 
     def clear(self, ticker: str | None = None) -> None:
         """Clear cache entries.
-        
+
         Args:
             ticker: If provided, clear only entries for this ticker. Otherwise clear all.
         """
@@ -156,7 +156,7 @@ class DataCache:
 
     def invalidate_expired(self) -> int:
         """Remove expired cache entries.
-        
+
         Returns:
             Number of entries removed.
         """

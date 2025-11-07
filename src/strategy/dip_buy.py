@@ -92,7 +92,7 @@ def allocate_shares_per_signal(
     fee_rate: float,
 ) -> pd.Series:
     """Allocate fixed number of shares per signal occurrence.
-    
+
     Returns the total cash outflow (BuyAmt + Fee) needed per day.
     This will be used by compute_ledger to calculate exact shares and fees.
 

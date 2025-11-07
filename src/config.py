@@ -42,7 +42,7 @@ def get_settings() -> Settings:
 
 def setup_logging(settings: Settings | None = None) -> None:
     """Setup logging configuration based on settings.
-    
+
     Args:
         settings: Settings instance. If None, will load from get_settings().
     """

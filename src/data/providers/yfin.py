@@ -133,10 +133,10 @@ class YFinanceFeed(PriceFeed):
 
     def validate_ticker(self, ticker: str) -> bool:
         """Validate if a ticker symbol exists and is supported.
-        
+
         Args:
             ticker: Ticker symbol to validate (e.g., 'TQQQ', 'AAPL').
-            
+
         Returns:
             True if ticker exists and is valid, False otherwise.
         """

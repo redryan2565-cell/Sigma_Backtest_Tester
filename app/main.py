@@ -205,7 +205,7 @@ def main() -> None:
         ### Shares-based Mode
         - Enter number of shares to buy per signal
         - Each signal day will buy the specified number of shares at market price
-        
+
         ### Parameters
         - **Ticker**: Stock symbol (e.g., TQQQ, AAPL)
         - **Date Range**: Start and end dates for backtest
@@ -240,11 +240,11 @@ def main() -> None:
         st.header("🔍 Parameter Optimization")
         st.info("""
         **Grid Search / Random Search Optimization**
-        
+
         This tool helps find optimal parameter combinations using IS/OS split methodology.
         - **IS (In-Sample)**: Training period for parameter selection
         - **OS (Out-of-Sample)**: Validation period to test robustness
-        
+
         **Constraints**: MDD ≥ -60%, Trades ≥ 15, HitDays ≥ 15
         **Ranking**: CAGR → Sortino → Sharpe → Cumulative Return
         """)
@@ -383,7 +383,7 @@ def main() -> None:
                         - Failed MDD constraint (< -60%): {failed_mdd}
                         - Failed Trades constraint (< 15): {failed_trades}
                         - Failed HitDays constraint (< 15): {failed_hitdays}
-                        
+
                         **Constraints:**
                         - MDD must be >= -60%
                         - Trades must be >= 15
@@ -471,9 +471,9 @@ def main() -> None:
         st.header("⚡ Leverage Mode - TP/SL 조합 최적화")
         st.info("""
         **Threshold 고정, TP/SL 조합 집중 탐색**
-        
+
         Threshold는 사용자가 직접 입력하여 고정하고, Take-Profit/Stop-Loss 비율 조합만 탐색하여 CAGR 최대화를 목표로 합니다.
-        
+
         **목표 지표**: CAGR 우선순위 → Sortino → Sharpe
         """)
 
@@ -1177,12 +1177,12 @@ def main() -> None:
                 with st.expander("ℹ️ Hysteresis란 무엇인가요?", expanded=False):
                     st.markdown("""
                     **Hysteresis(히스테리시스)**는 TP/SL 트리거 후 즉시 재트리거되는 것을 방지하는 기능입니다.
-                    
+
                     **TP Hysteresis 예시:**
                     - TP 임계값이 +30%이고 Hysteresis가 2.5%인 경우
                     - TP 트리거 후, 수익률이 (30% - 2.5%) = 27.5% 이하로 떨어져야 다시 TP가 활성화됩니다
                     - 이렇게 하면 작은 변동으로 인한 반복적인 TP 트리거를 방지할 수 있습니다
-                    
+
                     **SL Hysteresis 예시:**
                     - SL 임계값이 -20%이고 Hysteresis가 1.5%인 경우
                     - SL 트리거 후, 수익률이 (-20% + 1.5%) = -18.5% 이상으로 올라가야 다시 SL이 활성화됩니다
@@ -1222,17 +1222,17 @@ def main() -> None:
                 with st.expander("ℹ️ Cooldown이란 무엇인가요?", expanded=False):
                     st.markdown("""
                     **Cooldown(쿨다운)**은 TP/SL 트리거 후 일정 기간 동안 같은 종류의 트리거를 비활성화하는 기능입니다.
-                    
+
                     **TP Cooldown 예시:**
                     - TP Cooldown이 3일인 경우
                     - TP 트리거 후 3일 동안은 TP 조건을 만족해도 트리거되지 않습니다
                     - 이렇게 하면 짧은 시간 내 반복적인 TP 트리거를 방지할 수 있습니다
-                    
+
                     **SL Cooldown 예시:**
                     - SL Cooldown이 5일인 경우
                     - SL 트리거 후 5일 동안은 SL 조건을 만족해도 트리거되지 않습니다
                     - 이렇게 하면 급격한 하락 후 즉시 다시 SL이 트리거되는 것을 방지할 수 있습니다
-                    
+
                     **Hysteresis vs Cooldown:**
                     - **Hysteresis**: 수익률 기준으로 재활성화 조건을 설정 (예: 2.5% 더 떨어져야 재활성화)
                     - **Cooldown**: 시간 기준으로 재활성화 조건을 설정 (예: 3일 후에만 재활성화)
@@ -1329,9 +1329,9 @@ def main() -> None:
             try:
                 if uploaded is not None:
                     # Security: Validate file size (max 10MB)
-                    MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+                    max_file_size = 10 * 1024 * 1024  # 10MB
                     file_size = len(uploaded.getvalue())
-                    if file_size > MAX_FILE_SIZE:
+                    if file_size > max_file_size:
                         st.error(f"❌ File too large: {file_size / 1024 / 1024:.2f}MB. Maximum allowed size is 10MB.")
                         return
 

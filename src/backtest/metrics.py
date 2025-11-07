@@ -42,7 +42,7 @@ def _secant_root(
 
 def max_drawdown(series: pd.Series) -> float:
     """Compute Maximum Drawdown (MDD) from a value series.
-    
+
     Series should already be filtered to start from first investment date.
 
     Args:
@@ -129,11 +129,11 @@ def xirr(cash_flows: Sequence[float], dates: Sequence[datetime]) -> float:
 
 def sharpe_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
     """Calculate Sharpe ratio from NAV series.
-    
+
     Args:
         nav_series: Series of NAV values in chronological order.
         risk_free_rate: Risk-free rate (annual, as decimal). Defaults to 0.0.
-        
+
     Returns:
         Sharpe ratio (annualized). Returns 0.0 if insufficient data or invalid.
     """
@@ -163,11 +163,11 @@ def sharpe_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
 
 def sortino_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
     """Calculate Sortino ratio from NAV series.
-    
+
     Args:
         nav_series: Series of NAV values in chronological order.
         risk_free_rate: Risk-free rate (annual, as decimal). Defaults to 0.0.
-        
+
     Returns:
         Sortino ratio (annualized). Returns 0.0 if insufficient data or invalid.
     """

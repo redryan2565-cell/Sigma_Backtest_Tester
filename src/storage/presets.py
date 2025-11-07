@@ -57,7 +57,7 @@ class PresetManager:
 
     def __init__(self, presets_dir: Path | None = None) -> None:
         """Initialize preset manager.
-        
+
         Args:
             presets_dir: Directory for preset files. Defaults to .presets/ in project root.
         """
@@ -76,7 +76,7 @@ class PresetManager:
 
     def save(self, name: str, params: BacktestParams, start_date: date | None = None, end_date: date | None = None) -> None:
         """Save a preset.
-        
+
         Args:
             name: Preset name.
             params: BacktestParams to save.
@@ -96,10 +96,10 @@ class PresetManager:
 
     def load(self, name: str) -> tuple[BacktestParams | None, date | None, date | None]:
         """Load a preset.
-        
+
         Args:
             name: Preset name.
-            
+
         Returns:
             Tuple of (BacktestParams, start_date, end_date). Returns (None, None, None) if not found.
         """
@@ -154,7 +154,7 @@ class PresetManager:
 
     def list_presets(self) -> list[str]:
         """List all saved preset names.
-        
+
         Returns:
             List of preset names (without .json extension).
         """
@@ -171,10 +171,10 @@ class PresetManager:
 
     def delete(self, name: str) -> bool:
         """Delete a preset.
-        
+
         Args:
             name: Preset name.
-            
+
         Returns:
             True if deleted, False if not found.
         """

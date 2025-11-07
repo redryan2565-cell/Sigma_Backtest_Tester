@@ -17,15 +17,15 @@ def create_monthly_returns_heatmap(
     title: str = "Monthly Returns Heatmap",
 ) -> go.Figure | None:
     """Create a monthly returns heatmap from Portfolio Return Ratio (Equity / PositionCost).
-    
+
     This uses Portfolio Return Ratio instead of NAV to exclude the effect of new investments,
     showing only the actual portfolio performance.
-    
+
     Args:
         equity_series: Series of Equity values with DatetimeIndex.
         position_cost_series: Series of PositionCost values with DatetimeIndex.
         title: Chart title.
-        
+
     Returns:
         Plotly figure if Plotly is available, None otherwise.
     """
