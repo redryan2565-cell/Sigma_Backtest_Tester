@@ -1294,14 +1294,12 @@ def main() -> None:
             enable_tp = st.checkbox(
                 "Enable Take-Profit (TP)",
                 value=(tp_threshold is not None),
-                disabled=(universal_preset is not None),  # Disable if universal preset is loaded
                 help="Enable take-profit trigger (can be used independently from stop-loss)"
             )
 
             enable_sl = st.checkbox(
                 "Enable Stop-Loss (SL)",
                 value=(sl_threshold is not None),
-                disabled=(universal_preset is not None),  # Disable if universal preset is loaded
                 help="Enable stop-loss trigger (can be used independently from take-profit)"
             )
 
