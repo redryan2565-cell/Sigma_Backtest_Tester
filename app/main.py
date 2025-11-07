@@ -170,12 +170,12 @@ def main() -> None:
     if use_option_menu and option_menu_func:
         if DEVELOPER_MODE:
             # Developer mode: show all tabs
-            options = ["📊 Backtest", "🔍 Optimization", "⚡ Leverage Mode", "📁 Load CSV", "ℹ️ About"]
-            icons = ["graph-up", "search", "zap", "folder", "info-circle"]
+            options = ["📊 Backtest", "🔍 Optimization", "⚡ Leverage Mode", "ℹ️ About"]
+            icons = ["graph-up", "search", "zap", "info-circle"]
         else:
             # Deployment mode: hide Optimization and Leverage Mode
-            options = ["📊 Backtest", "📁 Load CSV", "ℹ️ About"]
-            icons = ["graph-up", "folder", "info-circle"]
+            options = ["📊 Backtest", "ℹ️ About"]
+            icons = ["graph-up", "info-circle"]
 
         selected = option_menu_func(
             menu_title=None,
@@ -189,15 +189,17 @@ def main() -> None:
             "Run Backtest" if selected == "📊 Backtest"
             else "Optimization" if selected == "🔍 Optimization"
             else "Leverage Mode" if selected == "⚡ Leverage Mode"
-            else "Load CSV" if selected == "📁 Load CSV"
             else "About"
         )
     else:
         st.title("📈 Normal Dip Backtest")
         if DEVELOPER_MODE:
-            view_mode = st.radio("Mode", options=["Run Backtest", "Optimization", "Leverage Mode", "Load CSV", "About"], horizontal=True)
+            view_mode = st.radio("Mode", options=["Run Backtest", "Optimization", "Leverage Mode", "About"], horizontal=True)
         else:
-            view_mode = st.radio("Mode", options=["Run Backtest", "Load CSV", "About"], horizontal=True)
+            view_mode = st.radio("Mode", options=["Run Backtest", "About"], horizontal=True)
+
+    # AI 생성 앱 경고 문구 (모든 페이지 상단에 고정 표시)
+    st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
 
     # About page
     if view_mode == "About":
@@ -224,9 +226,6 @@ def main() -> None:
             st.info("**AgGrid Tables**\n\nSort, filter, and export data")
         with col3:
             st.info("**Auto CSV Save**\n\nResults automatically saved")
-
-        # AI 생성 앱 경고 문구
-        st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
 
         return
 
@@ -900,24 +899,6 @@ def main() -> None:
                             st.success(f"✅ Deleted: {selected_preset_name}")
                             st.rerun()
 
-                    # Download all presets button
-                    if saved_presets:
-                        try:
-                            from datetime import datetime
-                            all_presets = preset_manager.export_all()
-                            json_data = json.dumps(all_presets, indent=2, ensure_ascii=False)
-                            st.download_button(
-                                "📥 Download All Presets",
-                                data=json_data,
-                                file_name=f"presets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                                mime="application/json",
-                                help="Download all your presets as JSON file for backup or transfer to another device",
-                                key="download_presets_btn"
-                            )
-                        except AttributeError:
-                            # If export_all is not available (old PresetManager), skip download button
-                            pass
-
                     # Show loaded preset info and clear button (moved here)
                     if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                         st.info(f"💡 Using preset: **{st.session_state.get('loaded_preset_name', 'Unknown')}** - All fields populated from preset. You can modify values as needed.")
@@ -954,10 +935,30 @@ def main() -> None:
 
                 st.divider()
 
-                # Import presets from file
-                st.subheader("📤 Import Presets")
+                # Import/Export JSON File section
+                st.subheader("📤 Import/Export JSON File")
+                
+                # Export (Download) button
+                if saved_presets:
+                    try:
+                        from datetime import datetime
+                        all_presets = preset_manager.export_all()
+                        json_data = json.dumps(all_presets, indent=2, ensure_ascii=False)
+                        st.download_button(
+                            "📥 Export Presets (Download JSON)",
+                            data=json_data,
+                            file_name=f"presets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                            mime="application/json",
+                            help="Download all your presets as JSON file for backup or transfer to another device",
+                            key="download_presets_btn"
+                        )
+                    except AttributeError:
+                        # If export_all is not available (old PresetManager), skip download button
+                        pass
+                
+                # Import (Upload) button
                 uploaded_file = st.file_uploader(
-                    "Upload presets JSON file",
+                    "Import Presets (Upload JSON)",
                     type=["json"],
                     help="Upload a previously downloaded presets file to restore your presets. This allows you to keep your presets even after closing the browser.",
                     key="upload_presets_file"
@@ -1371,150 +1372,8 @@ def main() -> None:
                     if 'preset_name_to_save' in st.session_state:
                         del st.session_state['preset_name_to_save']
 
-        else:  # Load CSV mode
-            st.header("CSV Settings")
-            csv_path = st.text_input("CSV path", value="daily.csv")
-            uploaded = st.file_uploader(
-                "...or upload CSV",
-                type=["csv"],
-                accept_multiple_files=False,
-                help="Upload a CSV file to view results (max 10MB)"
-            )
-            run_btn = st.button("📂 Load CSV", type="primary", width='stretch')
 
     if run_btn:
-        if view_mode == "Load CSV":
-            try:
-                if uploaded is not None:
-                    # Security: Validate file size (max 10MB)
-                    max_file_size = 10 * 1024 * 1024  # 10MB
-                    file_size = len(uploaded.getvalue())
-                    if file_size > max_file_size:
-                        st.error(f"❌ File too large: {file_size / 1024 / 1024:.2f}MB. Maximum allowed size is 10MB.")
-                        return
-
-                    # Security: Validate file type by extension
-                    if not uploaded.name.lower().endswith('.csv'):
-                        st.error("❌ Invalid file type. Only CSV files are allowed.")
-                        return
-
-                    daily = pd.read_csv(uploaded, index_col=0, parse_dates=True, encoding="utf-8-sig")
-                    st.success(f"✅ Loaded CSV from upload ({uploaded.name})")
-                else:
-                    path_obj = Path(csv_path)
-                    if not path_obj.is_absolute():
-                        base = Path.cwd()
-                        candidates = [base / csv_path, base / "daily.csv", Path(csv_path).expanduser()]
-                        for candidate in candidates:
-                            if candidate.exists():
-                                csv_path = str(candidate)
-                                break
-                        else:
-                            csv_path = str(path_obj)
-
-                    if not Path(csv_path).exists():
-                        st.error("❌ CSV file not found")
-                        # Don't expose file paths in production
-                        if debug_mode:
-                            st.info(f"Current working directory: {Path.cwd()}")
-                            csv_files = list(Path.cwd().glob("*.csv"))
-                            if csv_files:
-                                st.info(f"Available CSV files: {[str(f.name) for f in csv_files]}")
-                        return
-
-                    daily = pd.read_csv(csv_path, index_col=0, parse_dates=True, encoding="utf-8-sig")
-                    # Don't expose full path in production
-                    if debug_mode:
-                        st.success(f"✅ Loaded CSV from: {csv_path}")
-                    else:
-                        st.success("✅ Loaded CSV successfully")
-            except Exception as exc:
-                # Sanitize error message: don't expose file paths or system details
-                error_msg = str(exc)
-                # Remove file paths from error message
-                import re
-                error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
-                error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
-                st.error(f"❌ CSV load failed: {error_msg}")
-                # Only show detailed traceback in debug mode
-                if debug_mode:
-                    with st.expander("Technical Details"):
-                        import traceback
-                        # Sanitize error message to prevent information leakage
-                        tb_str = traceback.format_exc()
-                        # Remove file paths and replace with generic paths
-                        tb_str = re.sub(r'File "[^"]+[/\\]', 'File "', tb_str)
-                        st.code(tb_str)
-                else:
-                    st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
-                return
-
-            # Display CSV results
-            st.subheader("📈 NAV Chart (from CSV)")
-
-            if "NAV" in daily.columns:
-                nav_series = daily["NAV"]
-                chart_title = "Net Asset Value Over Time"
-            else:
-                st.warning("⚠️ 'NAV' column not found in CSV; showing first numeric column.")
-                nav_series = daily.select_dtypes(include=[float, int]).iloc[:, 0]
-                chart_title = f"{nav_series.name} Over Time"
-
-            # Use Plotly if available, else matplotlib
-            if PLOTLY_AVAILABLE:
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(
-                    x=nav_series.index,
-                    y=nav_series.values,
-                    mode='lines',
-                    name='NAV',
-                    line=dict(width=2, color='steelblue'),
-                    hovertemplate='<b>Date:</b> %{x}<br><b>NAV:</b> $%{y:,.2f}<extra></extra>'
-                ))
-                fig.update_layout(
-                    title=dict(text=chart_title, font=dict(size=16, color='black')),
-                    xaxis_title="Date",
-                    yaxis_title="NAV ($)",
-                    hovermode='x unified',
-                    template='plotly_white',
-                    height=500,
-                    showlegend=False
-                )
-                st.plotly_chart(fig, width='stretch')
-            else:
-                fig, ax = plt.subplots(figsize=(12, 6))
-                nav_series.plot(ax=ax, linewidth=2, color='steelblue')
-                ax.set_title(chart_title, fontsize=14, fontweight="bold")
-                ax.set_xlabel("Date", fontsize=12)
-                ax.set_ylabel("Value", fontsize=12)
-                ax.grid(True, alpha=0.3)
-                st.pyplot(fig, clear_figure=True)
-
-            st.subheader("📊 Daily Data")
-            if AGGrid_AVAILABLE:
-                # Configure AgGrid
-                gb = GridOptionsBuilder.from_dataframe(daily)
-                gb.configure_pagination(paginationAutoPageSize=True)
-                gb.configure_side_bar()
-                gb.configure_default_column(groupable=True, sortable=True, filterable=True)
-                gb.configure_selection('single')
-                grid_options = gb.build()
-
-                AgGrid(
-                    daily,
-                    gridOptions=grid_options,
-                    update_mode=GridUpdateMode.SELECTION_CHANGED,
-                    allow_unsafe_jscode=True,
-                    theme='streamlit',
-                    height=400,
-                )
-            else:
-                st.dataframe(daily, width='stretch', height=400)
-
-            # AI 생성 앱 경고 문구
-            st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
-            return
-
         # Run backtest path
         # Input validation
         errors = []
@@ -1879,42 +1738,21 @@ def main() -> None:
 
         # Daily data table
         st.subheader("📋 Daily Data")
-        if AGGrid_AVAILABLE:
-            # Configure AgGrid with better defaults
-            gb = GridOptionsBuilder.from_dataframe(daily)
-            gb.configure_pagination(paginationAutoPageSize=True, paginationPageSize=20)
-            gb.configure_side_bar()
-            gb.configure_default_column(
-                groupable=True,
-                sortable=True,
-                filterable=True,
-                resizable=True,
-                editable=False
-            )
-            # Format numeric columns
-            for col in daily.select_dtypes(include=[float, int]).columns:
-                gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"],
-                                  precision=2)
-            gb.configure_selection('single')
-            grid_options = gb.build()
-
-            grid_response = AgGrid(
-                daily,
-                gridOptions=grid_options,
-                update_mode=GridUpdateMode.SELECTION_CHANGED,
-                allow_unsafe_jscode=True,
-                theme='streamlit',
-                height=500,
-            )
-
-            # Show selected row info
-            if grid_response['selected_rows']:
-                st.info(f"Selected: {grid_response['selected_rows'][0]}")
-        else:
-            st.dataframe(daily, width='stretch', height=400)
-
-        # AI 생성 앱 경고 문구
-        st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
+        
+        # CSV download button
+        csv_buffer = io.StringIO()
+        daily.to_csv(csv_buffer, encoding="utf-8-sig")
+        csv_data = csv_buffer.getvalue().encode("utf-8-sig")
+        
+        st.download_button(
+            label="📥 Download Daily Data CSV",
+            data=csv_data,
+            file_name=f"daily_data_{ticker}_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+        )
+        
+        # Display table with horizontal scroll
+        st.dataframe(daily, use_container_width=True, height=500)
 
 
 if __name__ == "__main__":  # pragma: no cover
