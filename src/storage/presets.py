@@ -436,31 +436,26 @@ _preset_manager: PresetManager | SessionPresetManager | None = None
 def get_preset_manager() -> PresetManager | SessionPresetManager:
     """Get global preset manager instance.
 
-    Automatically selects the appropriate manager based on deployment environment:
-    - Streamlit Cloud: SessionPresetManager (session_state-based)
-    - Local development: PresetManager (file-based)
+    Always returns SessionPresetManager to ensure session-based storage.
+    This ensures presets are isolated per browser session and not shared across devices.
 
     Returns:
-        PresetManager or SessionPresetManager instance.
+        SessionPresetManager instance.
     """
     global _preset_manager
     if _preset_manager is None:
-        if _is_streamlit_cloud():
-            _preset_manager = SessionPresetManager()
-        else:
-            _preset_manager = PresetManager()
+        _preset_manager = SessionPresetManager()
     return _preset_manager
 
 
 def reset_preset_manager() -> None:
     """Reset global preset manager instance (for cache invalidation).
 
-    Call this after deleting or saving presets to ensure the list is refreshed.
-    Note: This only affects file-based PresetManager. SessionPresetManager
-    doesn't need reset as it uses session_state directly.
+    Note: SessionPresetManager doesn't need reset as it uses session_state directly.
+    This function is kept for backward compatibility but has no effect with SessionPresetManager.
     """
     global _preset_manager
-    # Only reset if it's a file-based manager
-    if isinstance(_preset_manager, PresetManager):
-        _preset_manager = None
+    # SessionPresetManager uses session_state directly, so no reset needed
+    # This function is kept for backward compatibility
+    pass
 

@@ -860,13 +860,15 @@ def main() -> None:
                 # Load preset UI (프리셋이 있을 때만 표시)
                 if saved_presets:
                     st.subheader("📁 Load Saved Preset")
+                    st.caption("💡 현재 브라우저 세션에서 저장한 preset을 불러옵니다. 브라우저를 닫으면 사라집니다.")
+                    
                     col_load1, col_load2 = st.columns([3, 1])
                     with col_load1:
                         selected_preset_name = st.selectbox(
                             "Select Preset",
                             options=[""] + saved_presets,
                             index=0,
-                            help="Load a saved preset configuration",
+                            help="현재 세션에 저장된 preset을 선택하세요",
                             key="preset_loader"
                         )
 
@@ -889,15 +891,13 @@ def main() -> None:
                                 st.error("❌ Load failed")
 
                     # Delete button
-                    if selected_preset_name and st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
-                        if preset_manager.delete(selected_preset_name):
-                            # Reset preset manager cache to refresh the list (only for file-based manager)
-                            if reset_preset_manager:
-                                from src.storage.presets import PresetManager as FilePresetManager
-                                if isinstance(preset_manager, FilePresetManager):
-                                    reset_preset_manager()
-                            st.success(f"✅ Deleted: {selected_preset_name}")
-                            st.rerun()
+                    if selected_preset_name:
+                        col_del1, col_del2 = st.columns([3, 1])
+                        with col_del2:
+                            if st.button("🗑️ Delete", disabled=not selected_preset_name, key="delete_preset_btn"):
+                                if preset_manager.delete(selected_preset_name):
+                                    st.success(f"✅ Deleted: {selected_preset_name}")
+                                    st.rerun()
 
                     # Show loaded preset info and clear button (moved here)
                     if 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
@@ -920,10 +920,12 @@ def main() -> None:
 
                 # Save Current Settings UI (항상 표시 - 프리셋이 없어도 저장 가능)
                 st.subheader("💾 Save Current Settings")
+                st.caption("💡 현재 설정을 세션에 저장합니다. 브라우저를 닫으면 사라집니다.")
+                
                 new_preset_name = st.text_input(
                     "Preset Name",
                     value="",
-                    help="Enter a name for this preset configuration",
+                    help="저장할 preset의 이름을 입력하세요",
                     key="save_preset_name"
                 )
 
@@ -937,6 +939,7 @@ def main() -> None:
 
                 # Import/Export JSON File section
                 st.subheader("📤 Import/Export JSON File")
+                st.caption("💡 Preset을 JSON 파일로 저장하거나 불러옵니다. 다른 컴퓨터나 나중에 사용할 수 있습니다.")
                 
                 # Export (Download) button
                 if saved_presets:
@@ -949,18 +952,20 @@ def main() -> None:
                             data=json_data,
                             file_name=f"presets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
                             mime="application/json",
-                            help="Download all your presets as JSON file for backup or transfer to another device",
+                            help="현재 세션의 모든 preset을 JSON 파일로 다운로드합니다",
                             key="download_presets_btn"
                         )
                     except AttributeError:
                         # If export_all is not available (old PresetManager), skip download button
                         pass
+                else:
+                    st.info("ℹ️ 저장된 preset이 없습니다. Export하려면 먼저 preset을 저장하세요.")
                 
                 # Import (Upload) button
                 uploaded_file = st.file_uploader(
                     "Import Presets (Upload JSON)",
                     type=["json"],
-                    help="Upload a previously downloaded presets file to restore your presets. This allows you to keep your presets even after closing the browser.",
+                    help="이전에 다운로드한 preset JSON 파일을 업로드하여 불러옵니다",
                     key="upload_presets_file"
                 )
                 if uploaded_file is not None:
@@ -968,11 +973,30 @@ def main() -> None:
                     if 'processed_import_files' not in st.session_state:
                         st.session_state['processed_import_files'] = set()
                     
+                    # Initialize last imported file tracking
+                    if 'last_imported_file_id' not in st.session_state:
+                        st.session_state['last_imported_file_id'] = None
+                    if 'last_imported_count' not in st.session_state:
+                        st.session_state['last_imported_count'] = 0
+                    
                     # Create unique file identifier (name + size)
                     file_id = f"{uploaded_file.name}_{uploaded_file.size}"
                     
-                    # Check if this file has already been processed
-                    if file_id not in st.session_state['processed_import_files']:
+                    # Check if this is the file we just imported (success case)
+                    if file_id == st.session_state.get('last_imported_file_id'):
+                        # This is the file we just successfully imported, show success message
+                        # Note: We can't read the file again after rerun, so use stored count
+                        imported_count = st.session_state.get('last_imported_count', 0)
+                        if imported_count > 0:
+                            st.success(f"✅ Imported {imported_count} preset(s)")
+                        else:
+                            st.success("✅ Import completed successfully")
+                    # Check if this file has already been processed before (duplicate upload)
+                    elif file_id in st.session_state['processed_import_files']:
+                        # File already processed in a previous session/attempt, show info message
+                        st.info("ℹ️ This file has already been imported. Upload a different file to import again.")
+                    else:
+                        # New file, process it
                         try:
                             presets_data = json.load(uploaded_file)
                             if isinstance(presets_data, dict):
@@ -981,6 +1005,9 @@ def main() -> None:
                                     preset_manager.import_all(presets_data)
                                     # Mark this file as processed
                                     st.session_state['processed_import_files'].add(file_id)
+                                    # Store as last imported file and count
+                                    st.session_state['last_imported_file_id'] = file_id
+                                    st.session_state['last_imported_count'] = len(presets_data)
                                     st.success(f"✅ Imported {len(presets_data)} preset(s)")
                                     st.rerun()
                                 else:
@@ -991,9 +1018,6 @@ def main() -> None:
                             st.error(f"❌ Failed to parse JSON file: {exc}")
                         except Exception as exc:
                             st.error(f"❌ Failed to import presets: {exc}")
-                    else:
-                        # File already processed, show info message
-                        st.info("ℹ️ This file has already been imported. Upload a different file to import again.")
 
                 st.divider()
 
@@ -1366,11 +1390,7 @@ def main() -> None:
                             start_date=start,
                             end_date=end
                         )
-                        # Reset preset manager cache to refresh the list (only for file-based manager)
-                        if reset_preset_manager:
-                            from src.storage.presets import PresetManager as FilePresetManager
-                            if isinstance(preset_manager, FilePresetManager):
-                                reset_preset_manager()
+                        # SessionPresetManager uses session_state directly, so no cache reset needed
                         st.success(f"✅ Saved preset: {st.session_state['preset_name_to_save']}")
                         # Clear the trigger flags
                         del st.session_state['trigger_save_preset']
