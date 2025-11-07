@@ -816,6 +816,12 @@ def main() -> None:
             elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                 loaded_params = st.session_state['loaded_preset']
 
+            # Handle universal preset ticker update before widget creation
+            if 'universal_preset_ticker_update' in st.session_state:
+                # Update ticker before widget is created
+                st.session_state['ticker_input'] = st.session_state['universal_preset_ticker_update']
+                del st.session_state['universal_preset_ticker_update']
+
             # Ticker input with validation
             ticker_default = "TQQQ"
             if universal_preset:
@@ -930,7 +936,8 @@ def main() -> None:
                                 # Apply preset values immediately by updating session_state
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
-                                st.session_state['ticker_input'] = universal_preset.ticker
+                                # Use a flag to update ticker before widget creation
+                                st.session_state['universal_preset_ticker_update'] = universal_preset.ticker
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
