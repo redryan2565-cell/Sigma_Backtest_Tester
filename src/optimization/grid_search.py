@@ -1,26 +1,23 @@
 from __future__ import annotations
 
-import csv
 import itertools
 import random
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 from ..backtest.engine import BacktestParams, run_backtest
 from ..backtest.metrics import sharpe_ratio, sortino_ratio
-from ..strategy.dip_buy import AllocationMode
 
 
 def generate_param_space(
     mode: str = "grid",
-    seed: Optional[int] = None,
+    seed: int | None = None,
     budget_n: int = 100,
-    base_params: Optional[BacktestParams] = None,
-) -> List[BacktestParams]:
+    base_params: BacktestParams | None = None,
+) -> list[BacktestParams]:
     """Generate parameter space for optimization.
     
     Args:
@@ -123,17 +120,17 @@ def generate_param_space(
 
 def generate_leverage_param_space(
     threshold: float,
-    tp_range: Tuple[float, float] = (15.0, 50.0),
-    sl_range: Tuple[float, float] = (-50.0, -10.0),
-    tp_sell_options: List[float] = [0.25, 0.50, 0.75, 1.0],
-    sl_sell_options: List[float] = [0.25, 0.50, 0.75, 1.0],
+    tp_range: tuple[float, float] = (15.0, 50.0),
+    sl_range: tuple[float, float] = (-50.0, -10.0),
+    tp_sell_options: list[float] = [0.25, 0.50, 0.75, 1.0],
+    sl_sell_options: list[float] = [0.25, 0.50, 0.75, 1.0],
     tp_step: float = 5.0,
     sl_step: float = 5.0,
     mode: str = "grid",
     budget_n: int = 100,
-    seed: Optional[int] = None,
-    base_params: Optional[BacktestParams] = None,
-) -> List[BacktestParams]:
+    seed: int | None = None,
+    base_params: BacktestParams | None = None,
+) -> list[BacktestParams]:
     """Generate parameter space for Leverage Mode optimization.
     
     Threshold is fixed, only TP/SL combinations are explored.
@@ -256,8 +253,8 @@ def generate_leverage_param_space(
 def evaluate_params(
     params: BacktestParams,
     prices: pd.DataFrame,
-    split: Dict[str, Tuple[date, date]],
-) -> Dict[str, Dict[str, float]]:
+    split: dict[str, tuple[date, date]],
+) -> dict[str, dict[str, float]]:
     """Evaluate parameters on IS and OS splits.
     
     Optimized version: filters prices once and avoids unnecessary copies.
@@ -345,9 +342,9 @@ def evaluate_params(
 
 def evaluate_params_optimized(
     params: BacktestParams,
-    split_prices_cache: Dict[str, pd.DataFrame],
-    split: Dict[str, Tuple[date, date]],
-) -> Dict[str, Dict[str, float]]:
+    split_prices_cache: dict[str, pd.DataFrame],
+    split: dict[str, tuple[date, date]],
+) -> dict[str, dict[str, float]]:
     """Optimized version of evaluate_params that uses pre-filtered prices.
     
     Args:
@@ -429,7 +426,7 @@ def evaluate_params_optimized(
     return results
 
 
-def rank_key(row: Dict[str, float]) -> Tuple[float, ...]:
+def rank_key(row: dict[str, float]) -> tuple[float, ...]:
     """Ranking function for parameter selection.
     
     Returns tuple for lexicographic ordering:
@@ -455,7 +452,7 @@ def rank_key(row: Dict[str, float]) -> Tuple[float, ...]:
     )
 
 
-def rank_results(is_results: List[Dict[str, any]]) -> Tuple[Optional[BacktestParams], Dict[str, int]]:
+def rank_results(is_results: list[dict[str, any]]) -> tuple[BacktestParams | None, dict[str, int]]:
     """Rank IS results and return best parameter with constraint statistics.
     
     Args:
@@ -525,12 +522,12 @@ def rank_results(is_results: List[Dict[str, any]]) -> Tuple[Optional[BacktestPar
 
 
 def run_search(
-    param_space: List[BacktestParams],
+    param_space: list[BacktestParams],
     prices: pd.DataFrame,
-    split: Dict[str, Tuple[date, date]],
-    output_dir: Optional[Path] = None,
-    save_every: Optional[int] = None,
-) -> Tuple[pd.DataFrame, Optional[BacktestParams], Dict[str, int]]:
+    split: dict[str, tuple[date, date]],
+    output_dir: Path | None = None,
+    save_every: int | None = None,
+) -> tuple[pd.DataFrame, BacktestParams | None, dict[str, int]]:
     """Run parameter search.
     
     Args:
@@ -549,7 +546,7 @@ def run_search(
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Pre-filter prices for each split (performance optimization)
-    split_prices_cache: Dict[str, pd.DataFrame] = {}
+    split_prices_cache: dict[str, pd.DataFrame] = {}
     for split_name, (start_date, end_date) in split.items():
         mask = (prices.index.date >= start_date) & (prices.index.date <= end_date)
         split_prices_cache[split_name] = prices.loc[mask]
@@ -557,7 +554,7 @@ def run_search(
     # Results storage
     is_results_list = []
     os_results_list = []
-    memo_cache: Dict[Tuple, Dict[str, Dict[str, float]]] = {}
+    memo_cache: dict[tuple, dict[str, dict[str, float]]] = {}
     
     # Process each parameter combination
     for i, params in enumerate(param_space):
@@ -639,8 +636,8 @@ def run_search(
 
 
 def _save_results(
-    is_results: List[Dict],
-    os_results: List[Dict],
+    is_results: list[dict],
+    os_results: list[dict],
     output_dir: Path,
     suffix: str = "",
 ) -> None:

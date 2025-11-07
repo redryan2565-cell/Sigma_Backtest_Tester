@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from typing import Dict, Any
+from datetime import date
+from typing import Any
 
 import pandas as pd
 import requests
@@ -25,7 +25,7 @@ class AlphaVantageFeed(PriceFeed):
             raise RuntimeError("Alpha Vantage API key not configured. Please set ALPHA_VANTAGE_KEY environment variable.")
 
     def get_daily(self, ticker: str, start: date, end: date) -> pd.DataFrame:
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "function": "TIME_SERIES_DAILY_ADJUSTED",
             "symbol": ticker,
             "outputsize": "full",
@@ -36,7 +36,12 @@ class AlphaVantageFeed(PriceFeed):
         r.raise_for_status()
         data = r.json()
         if "Time Series (Daily)" not in data:
-            raise ValueError(f"Unexpected Alpha Vantage response: {data.get('Note') or data}")
+            # Sanitize error message: don't expose API key or full response
+            error_note = data.get("Note", "")
+            if error_note:
+                raise ValueError(f"Alpha Vantage API error: {error_note}")
+            # Generic error message for production security
+            raise ValueError("Unable to retrieve data from Alpha Vantage. Please check your API key and try again.")
         ts = data["Time Series (Daily)"]
         records = []
         for ds, row in ts.items():

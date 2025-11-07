@@ -1,21 +1,53 @@
+# Streamlit Configuration for Production Deployment
+# This file configures Streamlit settings for optimal security and performance
+
+[server]
+# Security settings
+enableCORS = true
+enableXsrfProtection = true
+enableWebsocketCompression = true
+
+# Performance settings
+maxUploadSize = 10
+maxMessageSize = 10
+
+# Browser settings
+headless = true
+runOnSave = false
+fileWatcherType = "none"
+
+[browser]
+# Disable automatic browser opening in production
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
 [theme]
+# Default theme settings
 primaryColor = "#1f77b4"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262730"
 font = "sans serif"
 
-[server]
-headless = true
-port = 8501
-enableCORS = false
-enableXsrfProtection = true
+[ui]
+# UI settings
+hideTopBar = false
+hideSidebarNav = false
 
-[browser]
-gatherUsageStats = false
-serverAddress = "localhost"
+[client]
+# Client-side settings
+showErrorDetails = false
+toolbarMode = "minimal"
 
 [runner]
-fastReruns = true
+# Runner settings for performance
 magicEnabled = true
+installTracer = false
+fastReruns = true
+postScriptGC = true
 
+[logger]
+# Logging settings
+level = "error"
+messageFormat = "%(asctime)s.%(msecs)03d %(levelname)s: %(message)s"

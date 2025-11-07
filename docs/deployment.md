@@ -29,19 +29,26 @@ git push origin main
 Streamlit Cloud 대시보드에서 "Advanced settings" → "Secrets"에 다음을 추가:
 
 ```toml
-# app/.streamlit/secrets.toml
+# Streamlit Cloud Secrets (paste directly into Secrets editor)
 DEVELOPER_MODE = "false"
 DEBUG_MODE = "false"
 CACHE_ENABLED = "true"
 CACHE_TTL_HOURS = "24"
 ```
 
-또는 환경 변수로 설정:
+**중요**: 프로덕션 배포에서는 반드시 `DEVELOPER_MODE=false`와 `DEBUG_MODE=false`로 설정하세요.
+
+환경 변수 설명:
 
 - `DEVELOPER_MODE`: 개발자 모드 활성화 (기본값: false)
+  - `true`: Optimization 및 Leverage Mode 탭 표시
+  - `false`: 기본 Backtest 기능만 표시 (프로덕션 권장)
 - `DEBUG_MODE`: 디버그 모드 활성화 (기본값: false)
+  - `true`: 상세한 에러 트레이스 표시 (보안 위험)
+  - `false`: 일반적인 에러 메시지만 표시 (프로덕션 권장)
 - `CACHE_ENABLED`: 캐시 활성화 (기본값: true)
 - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: 24)
+- `ALPHA_VANTAGE_KEY`: Alpha Vantage API 키 (선택사항)
 
 ### 4. 배포 확인
 
@@ -76,26 +83,43 @@ streamlit run app/main.py
 ### Streamlit 설정
 
 `app/.streamlit/config.toml`에서 테마 및 서버 설정을 변경할 수 있습니다.
+이 파일은 프로젝트에 포함되어 있으며, 보안 및 성능 최적화 설정이 포함되어 있습니다.
 
 ### Secrets 관리
 
-민감한 정보는 `app/.streamlit/secrets.toml`에 저장하거나 환경 변수로 설정하세요.
+민감한 정보는 Streamlit Cloud의 Secrets 기능을 사용하거나 환경 변수로 설정하세요.
 
-**주의**: `secrets.toml` 파일은 절대 버전 관리에 포함하지 마세요!
+**로컬 개발용**: `app/.streamlit/secrets.toml.example` 파일을 참고하여 `secrets.toml`을 생성할 수 있습니다.
+
+**주의**: `secrets.toml` 파일은 절대 버전 관리에 포함하지 마세요! `.gitignore`에 이미 포함되어 있습니다.
 
 ## 문제 해결
 
 ### 배포 실패
 
 - Python 버전 확인 (3.10 이상 필요)
-- 의존성 설치 확인 (`pyproject.toml` 확인)
+- 의존성 설치 확인 (`requirements.txt` 또는 `pyproject.toml` 확인)
 - 로그 확인 (Streamlit Cloud 대시보드)
+- `app/.streamlit/config.toml` 파일이 올바르게 설정되었는지 확인
 
 ### 환경 변수 미적용
 
 - Streamlit Cloud의 Secrets 설정 확인
 - 환경 변수 이름 확인 (대소문자 구분)
 - 앱 재배포
+- `DEVELOPER_MODE`와 `DEBUG_MODE`가 `"false"`로 설정되었는지 확인 (문자열)
+
+### 성능 문제
+
+- 캐시가 활성화되어 있는지 확인 (`CACHE_ENABLED=true`)
+- 대용량 데이터셋 사용 시 날짜 범위를 제한 (최대 10년)
+- Streamlit Cloud의 리소스 제한 확인
+
+### 보안 문제
+
+- `DEBUG_MODE=false`로 설정되어 있는지 확인
+- 에러 메시지에 민감한 정보가 노출되지 않는지 확인
+- API 키가 코드에 하드코딩되지 않았는지 확인
 
 ## 추가 리소스
 

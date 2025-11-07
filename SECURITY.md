@@ -64,11 +64,16 @@ export DEBUG_MODE=true
 
 ### 배포 전 필수 확인 사항
 
-- [ ] `.env` 파일이 `.gitignore`에 포함되어 있는지 확인
-- [ ] API 키가 코드에 하드코딩되지 않았는지 확인
-- [ ] `DEBUG_MODE=false`로 설정되어 있는지 확인
-- [ ] 의존성 보안 취약점 검사 실행 (`pip-audit` 또는 `safety`)
-- [ ] 모든 사용자 입력에 검증이 적용되어 있는지 확인
+- [x] `.env` 파일이 `.gitignore`에 포함되어 있는지 확인
+- [x] API 키가 코드에 하드코딩되지 않았는지 확인
+- [x] `DEBUG_MODE=false`로 설정되어 있는지 확인
+- [x] `DEVELOPER_MODE=false`로 설정되어 있는지 확인 (프로덕션)
+- [x] 의존성 보안 취약점 검사 실행 (`pip-audit` 또는 `safety`)
+- [x] 모든 사용자 입력에 검증이 적용되어 있는지 확인
+- [x] CSV 파일 업로드 크기 제한 확인 (10MB)
+- [x] 날짜 범위 제한 확인 (최대 10년)
+- [x] 에러 메시지에서 파일 경로 제거 확인
+- [x] Streamlit 설정 파일 (`app/.streamlit/config.toml`) 확인
 
 ### 정기적인 보안 점검
 
@@ -98,8 +103,10 @@ export DEBUG_MODE=true
 ### 선택적 환경변수
 
 - `DEBUG_MODE`: 디버그 모드 활성화 (`true`/`false`, 기본값: `false`)
+- `DEVELOPER_MODE`: 개발자 모드 활성화 (`true`/`false`, 기본값: `false`)
 - `CACHE_ENABLED`: 캐시 활성화 (`true`/`false`, 기본값: `true`)
 - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: 24)
+- `LOG_LEVEL`: 로깅 레벨 (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, 기본값: `INFO`)
 
 ### 설정 예시
 
@@ -107,8 +114,10 @@ export DEBUG_MODE=true
 ```env
 ALPHA_VANTAGE_KEY=your_api_key_here
 DEBUG_MODE=false
+DEVELOPER_MODE=false
 CACHE_ENABLED=true
 CACHE_TTL_HOURS=24
+LOG_LEVEL=INFO
 ```
 
 ## 알려진 제한사항
@@ -142,4 +151,10 @@ CACHE_TTL_HOURS=24
 - 2025-01-XX: 에러 메시지 정보 노출 방지 구현
 - 2025-01-XX: API 키 노출 방지 강화
 - 2025-11-07: 프로젝트 구조 재정리 후 파일 경로 업데이트
+- 2025-11-07: Streamlit Cloud 배포 최적화 완료
+  - 입력 검증 강화 (CSV 파일 크기 제한, 날짜 범위 제한)
+  - 에러 메시지 보안 강화 (파일 경로 제거, 민감 정보 마스킹)
+  - Streamlit 설정 파일 추가 (`app/.streamlit/config.toml`)
+  - 로깅 시스템 추가
+  - 성능 최적화 (Streamlit 캐싱)
 

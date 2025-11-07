@@ -1,20 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, Literal, Tuple
 
 import numpy as np
 import pandas as pd
 
-from .metrics import cagr as cagr_func
-from .metrics import max_drawdown, xirr
-from ..strategy.dip_buy import (
-    AllocationMode,
-    allocate_shares_per_signal,
-    allocate_weekly_budget,
-    generate_dip_signals,
-)
+from .metrics import cagr as cagr_func, max_drawdown, xirr
+from ..strategy.dip_buy import allocate_shares_per_signal, generate_dip_signals
 
 
 @dataclass(frozen=True)
@@ -460,7 +452,7 @@ def compute_ledger(
                         nav_return_baselined = 0.0
                     
                     # Recalculate NAV return (same as global)
-                    nav_return = nav_return_global
+                    # nav_return = nav_return_global  # Not used, stored in nav_return_arr instead
         
         # ===== GUARD CLAUSE: Prevent TP/SL trigger on buy days =====
         # If shares were bought today, TP/SL triggers are invalid (must be held for at least 1 day)
@@ -510,7 +502,7 @@ def compute_ledger(
             nav_return_baselined = (nav / roi_base) - 1.0
         
         # Calculate NAV Return from investment (for historical reference, same as global)
-        nav_return = nav_return_global
+        # nav_return = nav_return_global  # Not used, stored in nav_return_arr instead
         
         # Store values for this day
         cum_shares_arr[i] = cum_shares
@@ -642,7 +634,7 @@ def compute_ledger(
     return ledger
 
 
-def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:
+def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:  # noqa: PLR0912, PLR0915
     """Validate accounting invariants including TP/SL logic."""
     cum_shares = ledger["CumShares"]
     cum_cash_flow = ledger["CumCashFlow"]
@@ -763,7 +755,7 @@ def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:
     if has_sells:
         # With sells, CumInvested should equal the maximum cumulative investment
         # This is the highest value that CumInvested ever reached
-        max_cum_invested = cum_invested.max()
+        # max_cum_invested = cum_invested.max()  # Not used
         # CumInvested should be non-decreasing and constant after the last investment
         # Actually, CumInvested should equal the cumulative sum of all buy costs
         # Let's validate: CumInvested should equal the cumulative sum of (BuyAmt + Fee) for all buys
@@ -927,7 +919,7 @@ def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:
             # 1. RealizedPnl is finite
             # 2. RealizedPnl = NetProceeds - CostBasis where CostBasis is proportional to position_cost
             for idx_val in ledger.index[sell_mask]:
-                shares_sold_val = shares_sold.loc[idx_val]
+                # shares_sold_val = shares_sold.loc[idx_val]  # Not used
                 net_proceeds_val = net_proceeds.loc[idx_val]
                 realized_pnl_val = realized_pnl.loc[idx_val]
                 
@@ -999,7 +991,7 @@ def _validate_ledger(ledger: pd.DataFrame, params: BacktestParams) -> None:
                             raise ValueError(f"SL triggered within cooldown period: {sl_date} -> {next_sl_date} (cooldown: {params.sl_cooldown_days} days, actual: {days_between} days)")
 
 
-def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataFrame, Dict[str, float]]:
+def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> tuple[pd.DataFrame, dict[str, float]]:
     """Run dip-buy backtest on provided price data.
 
     Args:
@@ -1053,7 +1045,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
             else:
                 benchmark_cagr = 0.0
         
-        metrics: Dict[str, float] = {
+        metrics: dict[str, float] = {
             "TotalInvested": 0.0,
             "EndingEquity": 0.0,
             "EndingNAV": 0.0,
@@ -1069,7 +1061,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
     
     first_invest_date = cum_invested[first_invest_mask].index[0]
     first_invest_nav = nav.loc[first_invest_date]
-    first_invest_amount = cum_invested.loc[first_invest_date]
+    # first_invest_amount = cum_invested.loc[first_invest_date]  # Not used
     
     # Metrics
     total_invested = float(cum_invested.iloc[-1])
@@ -1198,7 +1190,7 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> Tuple[pd.DataF
     # Calculate baseline reset count (approximate: same as TP/SL count if reset_baseline_after_tp_sl is True)
     baseline_reset_count = num_take_profits + num_stop_losses if params.reset_baseline_after_tp_sl else 0
     
-    metrics: Dict[str, float] = {
+    metrics: dict[str, float] = {
         "TotalInvested": round(total_invested, 6),
         "EndingEquity": round(ending_equity, 6),
         "EndingNAV": round(ending_nav, 6),
