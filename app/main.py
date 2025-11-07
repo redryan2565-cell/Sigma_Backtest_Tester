@@ -10,11 +10,13 @@ import pandas as pd
 import streamlit as st
 
 # Optional imports for enhanced features
+# Initialize all variables first to prevent NameError in Streamlit Cloud
 PLOTLY_AVAILABLE = False
 AGGrid_AVAILABLE = False
 OPTION_MENU_AVAILABLE = False
 option_menu = None
 
+# Import optional packages
 try:
     import plotly.graph_objects as go
     PLOTLY_AVAILABLE = True
@@ -30,9 +32,10 @@ except ImportError:
 try:
     from streamlit_option_menu import option_menu
     OPTION_MENU_AVAILABLE = True
-except (ImportError, Exception):
+except (ImportError, Exception) as e:
+    # Log error in debug mode, but don't fail
     OPTION_MENU_AVAILABLE = False
-    option_menu = None  # Fallback to prevent NameError
+    option_menu = None
 
 # Fix import path for Streamlit execution
 if Path(__file__).parent.parent.parent.exists():
