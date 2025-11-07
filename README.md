@@ -224,18 +224,7 @@ mypy src/ app/
 
 ## 배포
 
-자세한 배포 가이드는 [배포 문서](docs/deployment.md)를 참조하세요.
-
-### Streamlit Cloud 배포
-
-1. GitHub 저장소에 코드 푸시
-2. [Streamlit Cloud](https://streamlit.io/cloud)에서 새 앱 생성
-3. 앱 경로 설정: `app/main.py`
-4. 환경 변수 설정 (필수):
-   - `DEVELOPER_MODE`: 개발자 모드 활성화 (기본값: `"false"` - 프로덕션 권장)
-   - `DEBUG_MODE`: 디버그 모드 활성화 (기본값: `"false"` - 프로덕션 권장)
-   - `CACHE_ENABLED`: 캐시 활성화 (기본값: `"true"`)
-   - `CACHE_TTL_HOURS`: 캐시 TTL 시간 (기본값: `"24"`)
+Streamlit Cloud 또는 다른 플랫폼에서 배포할 수 있습니다.
 
 **중요**: 프로덕션 배포 시 반드시 `DEVELOPER_MODE=false`와 `DEBUG_MODE=false`로 설정하세요.
 
