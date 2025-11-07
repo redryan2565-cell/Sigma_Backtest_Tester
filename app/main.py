@@ -960,13 +960,13 @@ def main() -> None:
                 )
 
             # Security: Validate date range (max 10 years)
-            MAX_DATE_RANGE_DAYS = 365 * 10  # 10 years
+            max_date_range_days = 365 * 10  # 10 years
             if start and end:
                 date_range_days = (end - start).days
                 if date_range_days < 0:
                     st.error("❌ Start date must be before end date.")
-                elif date_range_days > MAX_DATE_RANGE_DAYS:
-                    st.error(f"❌ Date range too large: {date_range_days} days. Maximum allowed range is 10 years ({MAX_DATE_RANGE_DAYS} days).")
+                elif date_range_days > max_date_range_days:
+                    st.error(f"❌ Date range too large: {date_range_days} days. Maximum allowed range is 10 years ({max_date_range_days} days).")
                 elif date_range_days == 0:
                     st.warning("⚠️ Start and end dates are the same. No data will be available.")
 
