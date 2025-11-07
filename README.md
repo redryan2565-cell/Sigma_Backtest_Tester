@@ -5,7 +5,7 @@
 
 백테스트 엔진 + Streamlit GUI를 활용한 딥 구매 전략 백테스트 도구.
 
-**🚀 [Streamlit Cloud에서 배포됨](https://share.streamlit.io)** - 웹 브라우저에서 바로 사용 가능
+**🚀 [Streamlit Cloud에서 배포됨](https://sigmabacktesttester.streamlit.app/)** - 웹 브라우저에서 바로 사용 가능
 
 
 ## 주요 기능
