@@ -964,22 +964,36 @@ def main() -> None:
                     key="upload_presets_file"
                 )
                 if uploaded_file is not None:
-                    try:
-                        presets_data = json.load(uploaded_file)
-                        if isinstance(presets_data, dict):
-                            # Check if preset_manager has import_all method
-                            if hasattr(preset_manager, 'import_all'):
-                                preset_manager.import_all(presets_data)
-                                st.success(f"✅ Imported {len(presets_data)} preset(s)")
-                                st.rerun()
+                    # Initialize processed files tracking in session_state
+                    if 'processed_import_files' not in st.session_state:
+                        st.session_state['processed_import_files'] = set()
+                    
+                    # Create unique file identifier (name + size)
+                    file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+                    
+                    # Check if this file has already been processed
+                    if file_id not in st.session_state['processed_import_files']:
+                        try:
+                            presets_data = json.load(uploaded_file)
+                            if isinstance(presets_data, dict):
+                                # Check if preset_manager has import_all method
+                                if hasattr(preset_manager, 'import_all'):
+                                    preset_manager.import_all(presets_data)
+                                    # Mark this file as processed
+                                    st.session_state['processed_import_files'].add(file_id)
+                                    st.success(f"✅ Imported {len(presets_data)} preset(s)")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Import not supported with current preset manager")
                             else:
-                                st.error("❌ Import not supported with current preset manager")
-                        else:
-                            st.error("❌ Invalid preset file format. Expected a JSON object.")
-                    except json.JSONDecodeError as exc:
-                        st.error(f"❌ Failed to parse JSON file: {exc}")
-                    except Exception as exc:
-                        st.error(f"❌ Failed to import presets: {exc}")
+                                st.error("❌ Invalid preset file format. Expected a JSON object.")
+                        except json.JSONDecodeError as exc:
+                            st.error(f"❌ Failed to parse JSON file: {exc}")
+                        except Exception as exc:
+                            st.error(f"❌ Failed to import presets: {exc}")
+                    else:
+                        # File already processed, show info message
+                        st.info("ℹ️ This file has already been imported. Upload a different file to import again.")
 
                 st.divider()
 
