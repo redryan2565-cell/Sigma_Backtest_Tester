@@ -26,8 +26,9 @@ except ImportError:
 try:
     from streamlit_option_menu import option_menu
     OPTION_MENU_AVAILABLE = True
-except ImportError:
+except (ImportError, Exception):
     OPTION_MENU_AVAILABLE = False
+    option_menu = None  # Fallback to prevent NameError
 
 # Fix import path for Streamlit execution
 if Path(__file__).parent.parent.parent.exists():
@@ -130,6 +131,10 @@ def main() -> None:
     # No need to reload here for security and performance
     
     # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
+    # Ensure OPTION_MENU_AVAILABLE is defined (fallback if import failed)
+    if not 'OPTION_MENU_AVAILABLE' in globals():
+        OPTION_MENU_AVAILABLE = False
+    
     if OPTION_MENU_AVAILABLE:
         if DEVELOPER_MODE:
             # Developer mode: show all tabs
