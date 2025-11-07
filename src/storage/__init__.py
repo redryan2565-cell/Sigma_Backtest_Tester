@@ -4,8 +4,8 @@ from .presets import (
     AGGRESSIVE_PRESET,
     ALL_PRESETS,
     CONSERVATIVE_PRESET,
-    HysteresisCooldownPreset,
     MODERATE_PRESET,
+    HysteresisCooldownPreset,
 )
 
 __all__ = [

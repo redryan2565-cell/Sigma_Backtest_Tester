@@ -55,9 +55,9 @@ def max_drawdown(series: pd.Series) -> float:
     """
     if series.empty or len(series) < 2:
         return 0.0
-    
+
     vals = series.astype(float).values
-    
+
     # Remove any zeros or negative values that would cause issues
     if (vals <= 0).any():
         # Filter to positive values only
@@ -67,12 +67,12 @@ def max_drawdown(series: pd.Series) -> float:
         vals = vals[positive_mask]
         if len(vals) < 2:
             return 0.0
-    
+
     running_max = np.maximum.accumulate(vals)
     # Avoid division by zero
     drawdowns = (vals / np.where(running_max == 0, np.nan, running_max)) - 1.0
     drawdowns = np.nan_to_num(drawdowns, nan=0.0, posinf=0.0, neginf=-1.0)
-    
+
     # Clip to valid range [-1, 0]
     mdd = float(np.clip(drawdowns.min(), -1.0, 0.0))
     return mdd
@@ -139,24 +139,24 @@ def sharpe_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
     """
     if nav_series.empty or len(nav_series) < 2:
         return 0.0
-    
+
     # Calculate daily returns: NAV_t / NAV_{t-1} - 1
     nav_values = nav_series.values
     if (nav_values <= 0).any():
         return 0.0
-        
+
     daily_returns = np.diff(nav_values) / nav_values[:-1]
-    
+
     if len(daily_returns) == 0:
         return 0.0
-    
+
     # Annualize
     mean_return = np.mean(daily_returns) * 252  # Trading days per year
     std_return = np.std(daily_returns, ddof=1) * np.sqrt(252)
-    
+
     if std_return == 0:
         return 0.0
-    
+
     sharpe = (mean_return - risk_free_rate) / std_return
     return float(sharpe) if np.isfinite(sharpe) else 0.0
 
@@ -173,20 +173,20 @@ def sortino_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
     """
     if nav_series.empty or len(nav_series) < 2:
         return 0.0
-    
+
     # Calculate daily returns: NAV_t / NAV_{t-1} - 1
     nav_values = nav_series.values
     if (nav_values <= 0).any():
         return 0.0
-        
+
     daily_returns = np.diff(nav_values) / nav_values[:-1]
-    
+
     if len(daily_returns) == 0:
         return 0.0
-    
+
     # Annualize mean return
     mean_return = np.mean(daily_returns) * 252  # Trading days per year
-    
+
     # Downside deviation: std of negative returns only
     downside_returns = daily_returns[daily_returns < 0]
     if len(downside_returns) == 0:
@@ -194,12 +194,12 @@ def sortino_ratio(nav_series: pd.Series, risk_free_rate: float = 0.0) -> float:
         downside_std = 0.0
     else:
         downside_std = np.std(downside_returns, ddof=1) * np.sqrt(252)
-    
+
     if downside_std == 0:
         if mean_return > risk_free_rate:
             return np.inf
         return 0.0
-    
+
     sortino = (mean_return - risk_free_rate) / downside_std
     return float(sortino) if np.isfinite(sortino) else 0.0
 

@@ -48,7 +48,7 @@ def setup_logging(settings: Settings | None = None) -> None:
     """
     if settings is None:
         settings = get_settings()
-    
+
     # Determine log level
     if settings.debug_mode:
         level = logging.DEBUG
@@ -63,14 +63,14 @@ def setup_logging(settings: Settings | None = None) -> None:
             "CRITICAL": logging.CRITICAL,
         }
         level = level_map.get(level_str, logging.INFO)
-    
+
     # Configure logging
     logging.basicConfig(
         level=level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
-    
+
     # Suppress noisy third-party loggers in production
     if not settings.debug_mode:
         logging.getLogger("yfinance").setLevel(logging.WARNING)

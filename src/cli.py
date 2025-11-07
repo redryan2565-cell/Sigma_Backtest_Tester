@@ -11,7 +11,6 @@ import typer
 from .backtest.engine import BacktestParams, run_backtest
 from .data.providers.yfin import YFinanceFeed
 
-
 app = typer.Typer(help="normal-dip-bt CLI")
 
 

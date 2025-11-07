@@ -30,7 +30,7 @@ class DataCache:
         """
         self.enabled = enabled
         self.ttl_hours = ttl_hours
-        
+
         if cache_dir is None:
             # Default to .cache/ in project root (look for src/ parent)
             project_root = Path(__file__).parent.parent.parent
@@ -60,13 +60,13 @@ class DataCache:
         """
         if not self.enabled:
             return None
-            
+
         cache_key = self._cache_key(ticker, start, end)
         cache_path = self._cache_path(cache_key)
-        
+
         if not cache_path.exists():
             return None
-            
+
         try:
             # Check expiration
             mtime = datetime.fromtimestamp(cache_path.stat().st_mtime)
@@ -75,11 +75,11 @@ class DataCache:
                 # Expired, remove it
                 cache_path.unlink()
                 return None
-            
+
             # Load cached data
             with open(cache_path, "rb") as f:
                 cached_data = pickle.load(f)
-            
+
             # Validate cached data structure
             if not isinstance(cached_data, dict):
                 return None
@@ -89,7 +89,7 @@ class DataCache:
                 return None
             if "data" not in cached_data or not isinstance(cached_data["data"], pd.DataFrame):
                 return None
-                
+
             return cached_data["data"]
         except Exception:
             # On any error, remove corrupted cache
@@ -110,10 +110,10 @@ class DataCache:
         """
         if not self.enabled:
             return
-            
+
         cache_key = self._cache_key(ticker, start, end)
         cache_path = self._cache_path(cache_key)
-        
+
         try:
             cached_data = {
                 "ticker": ticker,
@@ -135,7 +135,7 @@ class DataCache:
         """
         if not self.cache_dir.exists():
             return
-            
+
         if ticker is None:
             # Clear all
             for cache_file in self.cache_dir.glob("*.pkl"):
@@ -162,10 +162,10 @@ class DataCache:
         """
         if not self.cache_dir.exists():
             return 0
-            
+
         removed = 0
         now = datetime.now()
-        
+
         for cache_file in self.cache_dir.glob("*.pkl"):
             try:
                 mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
@@ -175,7 +175,7 @@ class DataCache:
                     removed += 1
             except Exception:
                 pass
-                
+
         return removed
 
 

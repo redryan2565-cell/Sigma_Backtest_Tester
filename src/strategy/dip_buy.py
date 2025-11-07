@@ -4,7 +4,6 @@ from typing import Literal
 
 import pandas as pd
 
-
 AllocationMode = Literal["split", "first_hit"]
 
 

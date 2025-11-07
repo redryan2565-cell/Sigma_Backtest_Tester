@@ -11,7 +11,7 @@ from ..backtest.engine import BacktestParams
 @dataclass(frozen=True)
 class HysteresisCooldownPreset:
     """Hysteresis and Cooldown preset values."""
-    
+
     name: str
     tp_hysteresis: float  # As decimal (e.g., 0.05 for 5%)
     sl_hysteresis: float  # As decimal (e.g., 0.05 for 5%)
@@ -54,7 +54,7 @@ ALL_PRESETS = {
 
 class PresetManager:
     """Manage saved backtest parameter presets."""
-    
+
     def __init__(self, presets_dir: Path | None = None) -> None:
         """Initialize preset manager.
         
@@ -90,7 +90,7 @@ class PresetManager:
         if end_date:
             preset_dict['end_date'] = end_date.isoformat()
         preset_path = self._preset_path(name)
-        
+
         with open(preset_path, "w", encoding="utf-8") as f:
             json.dump(preset_dict, f, indent=2, default=str)
 
@@ -104,14 +104,14 @@ class PresetManager:
             Tuple of (BacktestParams, start_date, end_date). Returns (None, None, None) if not found.
         """
         preset_path = self._preset_path(name)
-        
+
         if not preset_path.exists():
             return None, None, None
-            
+
         try:
             with open(preset_path, encoding="utf-8") as f:
                 preset_dict = json.load(f)
-            
+
             # Extract start/end dates if present
             start_date = None
             end_date = None
@@ -121,11 +121,11 @@ class PresetManager:
             if 'end_date' in preset_dict:
                 end_date = date.fromisoformat(preset_dict['end_date'])
                 del preset_dict['end_date']  # Remove from dict before creating BacktestParams
-            
+
             # Validate required fields before creating BacktestParams
             if 'threshold' not in preset_dict:
                 return None, None, None
-            
+
             # Ensure shares_per_signal is set (budget-based mode no longer supported)
             # If preset has weekly_budget but no shares_per_signal, skip it
             if 'shares_per_signal' not in preset_dict or preset_dict['shares_per_signal'] is None:
@@ -136,16 +136,16 @@ class PresetManager:
                     return None, None, None
                 # No shares_per_signal and no weekly_budget - invalid preset
                 return None, None, None
-            
+
             # Ensure enable_tp_sl is boolean
             if 'enable_tp_sl' in preset_dict:
                 preset_dict['enable_tp_sl'] = bool(preset_dict['enable_tp_sl'])
-            
+
             # Remove budget-related fields if present (for backward compatibility)
             preset_dict.pop('weekly_budget', None)
             preset_dict.pop('mode', None)
             preset_dict.pop('carryover', None)
-            
+
             params = BacktestParams(**preset_dict)
             return params, start_date, end_date
         except (ValueError, TypeError, KeyError):
@@ -160,13 +160,13 @@ class PresetManager:
         """
         if not self.presets_dir.exists():
             return []
-            
+
         presets = []
         for preset_file in self.presets_dir.glob("*.json"):
             # Extract name from filename (remove .json extension)
             name = preset_file.stem
             presets.append(name)
-            
+
         return sorted(presets)
 
     def delete(self, name: str) -> bool:
@@ -179,10 +179,10 @@ class PresetManager:
             True if deleted, False if not found.
         """
         preset_path = self._preset_path(name)
-        
+
         if not preset_path.exists():
             return False
-            
+
         try:
             preset_path.unlink()
             return True
