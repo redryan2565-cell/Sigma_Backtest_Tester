@@ -834,7 +834,10 @@ def main() -> None:
             ticker_valid = True
             ticker_error_message = None
 
-            if ticker:
+            # Skip validation if universal preset is loaded (preset tickers are always valid)
+            if universal_preset:
+                ticker_valid = True
+            elif ticker:
                 # Initialize validation state in session_state if not present
                 if 'ticker_validation_cache' not in st.session_state:
                     st.session_state['ticker_validation_cache'] = {}
@@ -884,13 +887,13 @@ def main() -> None:
                         current_selection = ""
                     
                     # Determine index for radio button
-                    radio_index = 0
+                    radio_index = 0  # Default to "None"
                     if current_selection and current_selection in universal_preset_options:
                         radio_index = universal_preset_options.index(current_selection) + 1
                     
                     selected_universal = st.radio(
                         "Select Quick Preset",
-                        options=[""] + universal_preset_options,
+                        options=["None"] + universal_preset_options,
                         index=radio_index,
                         horizontal=True,
                         help="범용 preset을 선택하면 모든 설정이 자동으로 채워집니다",
@@ -898,7 +901,7 @@ def main() -> None:
                     )
                     
                     # Handle universal preset selection
-                    if selected_universal:
+                    if selected_universal and selected_universal != "None":
                         # Check if this is a new selection (not already loaded)
                         current_loaded = st.session_state.get('universal_preset_loaded', "")
                         if selected_universal != current_loaded and get_universal_preset:
@@ -921,8 +924,8 @@ def main() -> None:
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
-                    elif 'universal_preset_loaded' in st.session_state and st.session_state['universal_preset_loaded']:
-                        # Clear universal preset if empty selection (user deselected)
+                    elif selected_universal == "None" and 'universal_preset_loaded' in st.session_state and st.session_state['universal_preset_loaded']:
+                        # Clear universal preset if "None" is selected
                         del st.session_state['universal_preset_loaded']
                         if 'universal_preset' in st.session_state:
                             del st.session_state['universal_preset']
