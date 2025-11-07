@@ -48,6 +48,11 @@ results/*.csv
 # Root directory CSV files (backtest results)
 backtest_*.csv
 
+# Deployment guides (private, not for public repo)
+STREAMLIT_CLOUD_DEPLOYMENT.md
+DEPLOYMENT_STEPS.md
+docs/deployment.md
+
 # Environment
 .env
 .env.local

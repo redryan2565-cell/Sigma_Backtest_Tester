@@ -5,10 +5,6 @@
 
 백테스트 엔진 + Streamlit GUI를 활용한 딥 구매 전략 백테스트 도구.
 
-**🚀 [Streamlit Cloud에서 배포됨](https://share.streamlit.io)** - 웹 브라우저에서 바로 사용 가능
-
-> **배포 가이드**: [DEPLOYMENT_STEPS.md](DEPLOYMENT_STEPS.md) 파일을 참조하세요.
-
 ## 주요 기능
 
 - **Shares-based 모드**: 신호당 고정 주식 수 매수 (Budget-based 모드는 제거됨)
@@ -55,7 +51,6 @@ ndbt run TQQQ --start 2023-01-01 --end 2023-12-31 --threshold -0.041 --shares-pe
 streamlit run app/main.py
 ```
 
-**Streamlit Cloud 배포**: 자세한 배포 가이드는 [배포 문서](docs/deployment.md)를 참조하세요.
 
 #### 제한사항
 
@@ -261,7 +256,6 @@ streamlit run app/main.py
 ## 문서
 
 - [시작 가이드](docs/getting-started.md) - 설치 및 빠른 시작
-- [배포 가이드](docs/deployment.md) - Streamlit Cloud 배포 방법
 - [보안 가이드](SECURITY.md) - 보안 모범 사례
 
 ## 개발 환경
