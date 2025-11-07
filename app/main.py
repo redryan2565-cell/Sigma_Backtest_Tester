@@ -132,7 +132,9 @@ def main() -> None:
     
     # Navigation menu (hide Optimization/Leverage Mode in deployment mode)
     # Ensure OPTION_MENU_AVAILABLE is defined (fallback if import failed)
-    if not 'OPTION_MENU_AVAILABLE' in globals():
+    try:
+        _ = OPTION_MENU_AVAILABLE
+    except NameError:
         OPTION_MENU_AVAILABLE = False
     
     if OPTION_MENU_AVAILABLE:
