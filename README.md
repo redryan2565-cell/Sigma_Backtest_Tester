@@ -7,7 +7,6 @@
 
 **🚀 [Streamlit Cloud에서 배포됨](https://sigmabacktesttester.streamlit.app/)** - 웹 브라우저에서 바로 사용 가능
 
-
 ## 주요 기능
 
 - **Shares-based 모드**: 신호당 고정 주식 수 매수 (Budget-based 모드는 제거됨)
@@ -220,6 +219,32 @@ ruff check --fix .
 # Mypy 타입 체크 (선택)
 mypy src/ app/
 ```
+
+## 배포
+
+Streamlit Cloud 또는 다른 플랫폼에서 배포할 수 있습니다.
+
+**중요**: 프로덕션 배포 시 반드시 `DEVELOPER_MODE=false`와 `DEBUG_MODE=false`로 설정하세요.
+
+### 로컬 개발
+
+로컬 개발 시 개발자 모드 활성화:
+
+```bash
+# Windows PowerShell
+$env:DEVELOPER_MODE="true"
+streamlit run app/main.py
+
+# Linux/Mac
+export DEVELOPER_MODE=true
+streamlit run app/main.py
+```
+
+## 문서
+
+- [시작 가이드](docs/getting-started.md) - 설치 및 빠른 시작
+- [보안 가이드](SECURITY.md) - 보안 모범 사례
+
 ## 개발 환경
 
 - **Python**: 3.10, 3.11, 3.12 지원

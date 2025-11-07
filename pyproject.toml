@@ -21,6 +21,11 @@ dependencies = [
   "matplotlib>=3.7.0",
   "scipy>=1.10.0",
   "requests>=2.31.0",
+  # Streamlit GUI dependencies (required for app/main.py)
+  "streamlit>=1.32.0",
+  "streamlit-aggrid>=0.3.4",
+  "streamlit-option-menu>=0.3.12",
+  "plotly>=5.18.0",
 ]
 
 [project.optional-dependencies]
