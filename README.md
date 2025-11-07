@@ -7,6 +7,8 @@
 
 **🚀 [Streamlit Cloud에서 배포됨](https://share.streamlit.io)** - 웹 브라우저에서 바로 사용 가능
 
+> **배포 가이드**: [DEPLOYMENT_STEPS.md](DEPLOYMENT_STEPS.md) 파일을 참조하세요.
+
 ## 주요 기능
 
 - **Shares-based 모드**: 신호당 고정 주식 수 매수 (Budget-based 모드는 제거됨)
