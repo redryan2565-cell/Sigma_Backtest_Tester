@@ -883,17 +883,6 @@ def main() -> None:
             elif 'loaded_preset' in st.session_state and st.session_state.get('loaded_preset'):
                 loaded_params = st.session_state['loaded_preset']
 
-            # Handle universal preset ticker update before widget creation
-            if 'universal_preset_ticker_update' in st.session_state:
-                # Update ticker before widget is created
-                # Only update if user hasn't manually modified the ticker
-                if not st.session_state.get('user_modified_ticker', False):
-                    st.session_state['ticker_input'] = st.session_state['universal_preset_ticker_update']
-                    # Reset user_modified_ticker flag when preset updates ticker
-                    st.session_state['user_modified_ticker'] = False
-                # Always delete the flag after processing
-                del st.session_state['universal_preset_ticker_update']
-
             # Initialize ticker_input in session_state if not present
             if 'ticker_input' not in st.session_state:
                 if universal_preset:
@@ -914,8 +903,9 @@ def main() -> None:
             # Check if ticker was modified by comparing with previous value
             if 'previous_ticker_input' in st.session_state:
                 if st.session_state['previous_ticker_input'] != ticker:
-                    # Ticker was changed - check if it was by user or preset
-                    if 'universal_preset_ticker_update' not in st.session_state:
+                    # Ticker was changed by user (not by preset, since preset updates happen before widget creation)
+                    # Only mark as user-modified if universal preset is not currently loaded
+                    if 'universal_preset_loaded' not in st.session_state or not st.session_state.get('universal_preset_loaded'):
                         st.session_state['user_modified_ticker'] = True
             st.session_state['previous_ticker_input'] = ticker
 
@@ -1020,13 +1010,10 @@ def main() -> None:
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
                                 
-                                # Update ticker directly in session_state before widget creation
-                                # Only update ticker if user hasn't manually modified it
-                                if not st.session_state.get('user_modified_ticker', False):
-                                    # Set flag to update ticker before widget creation
-                                    st.session_state['universal_preset_ticker_update'] = universal_preset.ticker
-                                    # Reset user_modified_ticker when preset updates ticker
-                                    st.session_state['user_modified_ticker'] = False
+                                # Update ticker directly in session_state - always update when preset is selected
+                                st.session_state['ticker_input'] = universal_preset.ticker
+                                # Reset user_modified_ticker flag when preset updates ticker
+                                st.session_state['user_modified_ticker'] = False
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
@@ -1739,40 +1726,6 @@ def main() -> None:
                 else:
                     st.info("💡 For detailed error information, enable DEBUG_MODE in environment variables.")
                 return
-
-        # Save CSV automatically - use memory buffer for Streamlit Cloud compatibility
-        csv_filename = f"backtest_{ticker}_{start.strftime('%Y%m%d')}_{end.strftime('%Y%m%d')}.csv"
-        try:
-            import io
-            csv_buffer = io.StringIO()
-            daily.to_csv(csv_buffer, encoding="utf-8-sig")
-            csv_data = csv_buffer.getvalue().encode("utf-8-sig")
-
-            st.success(f"💾 Results ready for download: `{csv_filename}`")
-
-            # Download button (always available, no file system dependency)
-            st.download_button(
-                label="📥 Download CSV",
-                data=csv_data,
-                file_name=csv_filename,
-                mime="text/csv",
-            )
-
-            # Try to save to file system if possible (for local development)
-            if debug_mode:
-                try:
-                    csv_path_full = Path.cwd() / csv_filename
-                    daily.to_csv(csv_path_full, encoding="utf-8-sig")
-                    st.info(f"💾 Also saved to: `{csv_filename}`")
-                except Exception:
-                    pass  # Ignore file system errors in production
-        except Exception as exc:
-            # Sanitize error message
-            error_msg = str(exc)
-            import re
-            error_msg = re.sub(r'[A-Z]:[\\/][^\\s]+', '[path removed]', error_msg)
-            error_msg = re.sub(r'/home/[^\\s]+', '[path removed]', error_msg)
-            st.warning(f"⚠️ Could not prepare CSV download: {error_msg}")
 
         # Display metrics in columns
         st.subheader("📊 Performance Metrics")
