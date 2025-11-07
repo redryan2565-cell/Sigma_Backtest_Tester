@@ -12,9 +12,14 @@
 2. "New app" 버튼 클릭
 3. GitHub 저장소 선택: `redryan2565-cell/pratice`
 4. 앱 설정:
-   - **Main file path**: `app/main.py`
+   - **Main file path**: `app/main.py` (또는 루트의 `streamlit_app.py` 사용 가능)
    - **Python version**: 3.10 이상 선택 (권장: 3.11)
    - **Branch**: `feature/tp-sl-logic-improvement` 또는 `main` 선택
+
+**참고**: 
+- 이 프로젝트는 `app/main.py`를 메인 파일로 사용합니다
+- 루트에 `streamlit_app.py`가 있지만, Streamlit Cloud 설정에서 `app/main.py`를 직접 지정하는 것을 권장합니다
+- `.streamlit/config.toml`은 `app/.streamlit/` 디렉토리에 있으며 자동으로 인식됩니다
 
 ## 3단계: Secrets 설정 (필수!)
 
@@ -51,14 +56,22 @@ CACHE_TTL_HOURS = "24"
 - Python 버전 확인 (3.10 이상)
 - `app/main.py` 파일 경로 확인
 - Streamlit Cloud 로그 확인
+- `requirements.txt` 또는 `pyproject.toml`의 의존성 확인
 
 ### 환경 변수 미적용 시
 - Secrets에 값이 문자열로 설정되었는지 확인 (`"false"` 형식)
+- 환경 변수 이름 확인 (대소문자 구분)
 - 앱 재배포
 
 ### 성능 문제
-- 캐시가 활성화되어 있는지 확인
+- 캐시가 활성화되어 있는지 확인 (`CACHE_ENABLED=true`)
 - 날짜 범위를 10년 이하로 제한
+- Streamlit Cloud의 리소스 제한 확인
+
+### 빌드 크기 문제
+- Git에 추적 중인 대용량 파일 확인 (CSV 파일 등)
+- `.gitignore`에 결과 파일이 제외되어 있는지 확인
+- 불필요한 파일 제거
 
 ## 다음 단계 (선택사항)
 

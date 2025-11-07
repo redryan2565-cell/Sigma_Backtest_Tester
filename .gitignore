@@ -35,8 +35,14 @@ env/
 .cache/
 *.cache
 
-# Results (CSV files - optional, uncomment to ignore)
-# results/*.csv
+# Logs and databases
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Results (CSV files)
+results/*.csv
 !results/.gitkeep
 
 # Root directory CSV files (backtest results)

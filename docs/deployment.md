@@ -20,9 +20,17 @@ git push origin main
 2. "New app" 클릭
 3. GitHub 저장소 선택
 4. 앱 설정:
-   - **Main file path**: `app/main.py`
-   - **Python version**: 3.10 이상 선택
+   - **Main file path**: `app/main.py` (권장) 또는 루트의 `streamlit_app.py`
+   - **Python version**: 3.10 이상 선택 (권장: 3.11)
    - **Branch**: `main` (또는 원하는 브랜치)
+
+**진입점 파일**:
+- `app/main.py`: 메인 Streamlit 앱 파일 (권장)
+- `streamlit_app.py`: 루트 진입점 파일 (선택사항, `app/main.py`를 호출)
+
+**설정 파일 위치**:
+- `app/.streamlit/config.toml`: Streamlit 설정 파일 (자동 인식)
+- `app/.streamlit/secrets.toml.example`: Secrets 템플릿 파일
 
 ### 3. 환경 변수 설정
 
@@ -118,8 +126,25 @@ streamlit run app/main.py
 ### 보안 문제
 
 - `DEBUG_MODE=false`로 설정되어 있는지 확인
+- `DEVELOPER_MODE=false`로 설정되어 있는지 확인 (프로덕션)
 - 에러 메시지에 민감한 정보가 노출되지 않는지 확인
 - API 키가 코드에 하드코딩되지 않았는지 확인
+- Git에 추적 중인 CSV 파일이나 로그 파일이 없는지 확인
+
+### 빌드 크기 문제
+
+- Git에 추적 중인 대용량 파일 확인:
+  ```bash
+  git ls-files | grep -E '\.(csv|log|db)$'
+  ```
+- `.gitignore`에 결과 파일이 제외되어 있는지 확인:
+  - `results/*.csv`
+  - `backtest_*.csv`
+  - `*.log`, `*.db`
+- 불필요한 파일 제거:
+  ```bash
+  git rm --cached <file>
+  ```
 
 ## 추가 리소스
 
