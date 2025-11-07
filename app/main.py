@@ -141,6 +141,81 @@ def validate_ticker_cached(ticker: str) -> bool:
 def main() -> None:
     st.set_page_config(page_title="normal-dip-bt", layout="wide", page_icon="📈", initial_sidebar_state="expanded")
 
+    # 모바일 CSS 반응형 개선 (PC GUI 손상 없이)
+    st.markdown("""
+    <style>
+    /* 모바일 최적화 (max-width: 768px) */
+    @media (max-width: 768px) {
+        /* 사이드바 패딩 조정 */
+        .css-1d391kg {
+            padding: 1rem 0.5rem;
+        }
+        
+        /* 버튼 크기 조정 */
+        .stButton > button {
+            width: 100%;
+            padding: 0.5rem;
+            font-size: 0.9rem;
+            min-height: 2.5rem;
+        }
+        
+        /* 입력 필드 크기 조정 */
+        .stTextInput > div > div > input,
+        .stNumberInput > div > div > input,
+        .stSelectbox > div > div > select,
+        .stDateInput > div > div > input {
+            font-size: 0.9rem;
+            padding: 0.5rem;
+        }
+        
+        /* 테이블 스크롤 개선 */
+        .stDataFrame {
+            overflow-x: auto;
+            font-size: 0.85rem;
+        }
+        
+        /* 차트 크기 조정 */
+        .js-plotly-plot {
+            width: 100% !important;
+        }
+        
+        /* 헤더 크기 조정 */
+        h1 {
+            font-size: 1.5rem;
+        }
+        h2 {
+            font-size: 1.2rem;
+        }
+        h3 {
+            font-size: 1rem;
+        }
+        
+        /* 간격 조정 */
+        .element-container {
+            margin-bottom: 0.5rem;
+        }
+        
+        /* 라디오 버튼 간격 조정 */
+        .stRadio > div {
+            gap: 0.5rem;
+        }
+        
+        /* 체크박스 간격 조정 */
+        .stCheckbox {
+            margin-bottom: 0.5rem;
+        }
+    }
+    
+    /* 태블릿 최적화 (769px ~ 1024px) */
+    @media (min-width: 769px) and (max-width: 1024px) {
+        .stButton > button {
+            padding: 0.6rem;
+            font-size: 0.95rem;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     # Settings are already loaded at module level (DEVELOPER_MODE, debug_mode)
     # No need to reload here for security and performance
 
@@ -218,7 +293,7 @@ def main() -> None:
         - **Threshold**: 일일 수익률 임계값 (음수 값, 예: -4.1은 -4.1% 하락 시 매수)
         - **Shares per Signal**: 신호 발생 시 매수할 주식 수
         - **Fee Rate**: 거래 시 발생하는 수수료 비율
-        - **Slippage Rate**: 주문 체결 시 발생하는 가격 차이 비율
+        - **Slippage Rate**: 주문 실행 시 예상 가격과 실제 체결 가격의 차이 (호가 스프레드, 시장 충격 등)
         """)
 
         return
@@ -340,7 +415,7 @@ def main() -> None:
                         threshold=-0.04,
                         shares_per_signal=shares_per_signal,
                         fee_rate=0.0005,
-                        slippage_rate=0.0005,
+                        slippage_rate=0.0025,
                         enable_tp_sl=True,
                         tp_threshold=0.30,  # Default TP threshold (30%)
                         sl_threshold=-0.20,  # Default SL threshold (-20%)
@@ -600,7 +675,7 @@ def main() -> None:
         with col_fee1:
             fee_rate_lev = st.number_input("Fee Rate (%) (운영보수)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_fee_rate", help="운영보수: 거래 시 발생하는 수수료 비율")
         with col_fee2:
-            slippage_rate_lev = st.number_input("Slippage Rate (%) (괴리율)", value=0.05, min_value=0.0, step=0.01, format="%0.2f", key="lev_slippage_rate", help="괴리율: 주문 체결 시 발생하는 가격 차이 비율")
+            slippage_rate_lev = st.number_input("Slippage Rate (%)", value=0.25, min_value=0.0, step=0.01, format="%0.2f", key="lev_slippage_rate", help="주문 실행 시 예상 가격과 실제 체결 가격의 차이 (호가 스프레드, 시장 충격 등). 일반적으로 0.1%~0.5%")
 
         # Run button
         can_run = (
@@ -1246,13 +1321,13 @@ def main() -> None:
                 )
             with col4:
                 slippage_rate = st.number_input(
-                    "Slippage Rate (%) (괴리율)",
+                    "Slippage Rate (%)",
                     value=slippage_rate_value,
                     step=0.01,
                     format="%0.2f",
                     min_value=-10.0,
                     max_value=10.0,
-                    help="괴리율: 주문 체결 시 발생하는 가격 차이 비율 (음수 가능, e.g., -4.2 for -4.2%)"
+                    help="주문 실행 시 예상 가격과 실제 체결 가격의 차이 (호가 스프레드, 시장 충격 등). 일반적으로 0.1%~0.5%"
                 )
 
             # Take-Profit / Stop-Loss section
@@ -1515,7 +1590,7 @@ def main() -> None:
                         threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
                         shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
                         fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0005,
-                        slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0005,
+                        slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0025,
                         enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),  # Auto-set based on thresholds
                         tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
                         sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,
@@ -1630,7 +1705,7 @@ def main() -> None:
                     threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
                     shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
                     fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0,
-                    slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0,
+                    slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0025,
                     enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),  # Auto-set based on thresholds
                     tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
                     sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,

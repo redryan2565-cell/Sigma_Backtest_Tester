@@ -18,7 +18,7 @@ class BacktestParams:
     carryover: bool | None = None
     shares_per_signal: float | None = None
     fee_rate: float = 0.0005
-    slippage_rate: float = 0.0005
+    slippage_rate: float = 0.0025  # 0.25%
     # Take-Profit / Stop-Loss parameters
     enable_tp_sl: bool = False
     tp_threshold: float | None = None  # Take-profit threshold as decimal (e.g., 0.30 for 30%)

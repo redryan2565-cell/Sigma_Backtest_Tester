@@ -163,6 +163,11 @@ IS/OS 분리 기반 파라미터 최적화:
 
 ### 프리셋
 
+- **범용 Preset (Quick Presets)**: 
+  - TQQQ: Threshold -4.1%, Fee 0.8%, Slippage 0.25%
+  - SOXL: Threshold -7.2%, Fee 0.75%, Slippage 0.25%
+  - QLD: Threshold -2.5%, Fee 0.95%, Slippage 0.25%
+  - 공통: Start Date 2020-01-01, Shares 1, TP/SL 꺼짐
 - **Hysteresis/Cooldown 프리셋**: 
   - Conservative: TP/SL Hysteresis 5%, TP Cooldown 5일, SL Cooldown 3일
   - Moderate: TP/SL Hysteresis 3%, TP Cooldown 3일, SL Cooldown 2일
@@ -170,6 +175,7 @@ IS/OS 분리 기반 파라미터 최적화:
 - **백테스트 설정 저장**: 현재 설정을 프리셋으로 저장
 - **프리셋 불러오기**: 저장된 프리셋으로 설정 복원
 - **프리셋 관리**: 저장/불러오기/삭제 기능
+- **Slippage Rate 기본값**: 0.25% (주문 실행 시 예상 가격과 실제 체결 가격의 차이)
 
 ### 고급 시각화
 

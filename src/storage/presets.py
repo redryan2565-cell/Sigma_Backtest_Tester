@@ -84,7 +84,7 @@ def _init_universal_presets() -> None:
         threshold=-0.041,  # -4.1%
         shares_per_signal=common_shares,
         fee_rate=0.008,  # 0.8%
-        slippage_rate=0.0013,  # 0.13%
+        slippage_rate=0.0025,  # 0.25%
         enable_tp_sl=common_tp_sl_enabled,
         tp_threshold=None,
         sl_threshold=None,
@@ -109,7 +109,7 @@ def _init_universal_presets() -> None:
         threshold=-0.072,  # -7.2%
         shares_per_signal=common_shares,
         fee_rate=0.0075,  # 0.75%
-        slippage_rate=-0.042,  # -4.2% (as specified by user)
+        slippage_rate=0.0025,  # 0.25%
         enable_tp_sl=common_tp_sl_enabled,
         tp_threshold=None,
         sl_threshold=None,
@@ -134,7 +134,7 @@ def _init_universal_presets() -> None:
         threshold=-0.025,  # -2.5%
         shares_per_signal=common_shares,
         fee_rate=0.0095,  # 0.95%
-        slippage_rate=-0.0089,  # -0.89% (as specified by user)
+        slippage_rate=0.0025,  # 0.25%
         enable_tp_sl=common_tp_sl_enabled,
         tp_threshold=None,
         sl_threshold=None,
