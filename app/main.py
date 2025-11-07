@@ -14,8 +14,18 @@ if Path(__file__).parent.parent.parent.exists():
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.backtest.engine import BacktestParams, run_backtest
-from src.config import get_settings, setup_logging
+from src.config import get_settings
 from src.data.providers.yfin import YFinanceFeed
+
+# Try to import setup_logging (may not be available in all environments)
+try:
+    from src.config import setup_logging
+    _setup_logging_available = True
+except ImportError:
+    _setup_logging_available = False
+    import logging
+    # Fallback: basic logging setup
+    logging.basicConfig(level=logging.INFO)
 
 # Initialize settings at module level for security configuration
 # This ensures settings are loaded once and available throughout the app
@@ -24,7 +34,22 @@ DEVELOPER_MODE = _settings.developer_mode
 debug_mode = _settings.debug_mode
 
 # Setup logging (only log errors in production)
-setup_logging(_settings)
+if _setup_logging_available:
+    setup_logging(_settings)
+else:
+    # Fallback logging setup
+    import logging
+    level = logging.DEBUG if debug_mode else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    if not debug_mode:
+        logging.getLogger("yfinance").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+        logging.getLogger("requests").setLevel(logging.WARNING)
+
 import logging
 logger = logging.getLogger(__name__)
 try:
