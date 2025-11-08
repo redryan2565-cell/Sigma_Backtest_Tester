@@ -1876,36 +1876,38 @@ def main() -> None:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            st.metric("Total Invested", f"${metrics['TotalInvested']:,.2f}")
-            st.metric("Ending NAV", f"${metrics['EndingNAV']:,.2f}")
-            st.metric("Profit", f"${metrics.get('Profit', 0.0):,.2f}", help="Profit = Equity + CumCashFlow (net profit/loss)")
-            st.metric("NAV (including invested)", f"${metrics.get('NAV_including_invested', 0.0):,.2f}", help="NAV_including_invested = CumInvested + Profit")
+            # V2 engine uses lowercase_with_underscores keys
+            st.metric("Total Invested", f"${metrics.get('total_invested', metrics.get('TotalInvested', 0.0)):,.2f}")
+            st.metric("Ending NAV", f"${metrics.get('ending_nav', metrics.get('EndingNAV', 0.0)):,.2f}")
+            st.metric("Profit", f"${metrics.get('profit', metrics.get('Profit', 0.0)):,.2f}", help="Profit = Equity + CumCashFlow (net profit/loss)")
+            nav_including = metrics.get('ending_nav', metrics.get('EndingNAV', 0.0))
+            st.metric("NAV (including invested)", f"${nav_including:,.2f}", help="NAV = Ending NAV")
 
         with col2:
-            st.metric("Cumulative Return", f"{metrics['CumulativeReturn']*100:.2f}%")
-            st.metric("Strategy CAGR", f"{metrics['CAGR']*100:.2f}%")
-            st.metric("Benchmark CAGR (Buy & Hold)", f"{metrics.get('BenchmarkCAGR', 0.0)*100:.2f}%")
-            st.metric("Maximum Drawdown", f"{metrics['MDD']*100:.2f}%")
-            st.metric("XIRR", f"{metrics['XIRR']*100:.2f}%")
+            st.metric("Cumulative Return", f"{metrics.get('cumulative_return', metrics.get('CumulativeReturn', 0.0))*100:.2f}%")
+            st.metric("Strategy CAGR", f"{metrics.get('cagr', metrics.get('CAGR', 0.0))*100:.2f}%")
+            st.metric("Benchmark CAGR (Buy & Hold)", f"{metrics.get('benchmark_cagr', metrics.get('BenchmarkCAGR', 0.0))*100:.2f}%")
+            st.metric("Maximum Drawdown", f"{metrics.get('mdd', metrics.get('MDD', 0.0))*100:.2f}%")
+            st.metric("XIRR", f"{metrics.get('xirr', metrics.get('XIRR', 0.0))*100:.2f}%")
 
         with col3:
-            st.metric("Total Trades", f"{int(metrics['Trades'])}")
-            st.metric("Signal Days", f"{int(metrics['HitDays'])}")
-            st.metric("Ending Equity", f"${metrics['EndingEquity']:,.2f}")
+            st.metric("Total Trades", f"{int(metrics.get('total_trades', metrics.get('Trades', 0)))}")
+            st.metric("Signal Days", f"{int(metrics.get('signal_days', metrics.get('HitDays', 0)))}")
+            st.metric("Ending Equity", f"${metrics.get('ending_equity', metrics.get('EndingEquity', 0.0)):,.2f}")
 
         # TP/SL metrics (if enabled)
-        if (tp_threshold is not None or sl_threshold is not None) and "NumTakeProfits" in metrics:
+        if (tp_threshold is not None or sl_threshold is not None) and ("num_tp" in metrics or "NumTakeProfits" in metrics):
             st.subheader("🎯 Take-Profit / Stop-Loss Metrics")
             tp_col1, tp_col2, tp_col3, tp_col4 = st.columns(4)
             with tp_col1:
-                st.metric("Take-Profits", f"{int(metrics['NumTakeProfits'])}")
+                st.metric("Take-Profits", f"{int(metrics.get('num_tp', metrics.get('NumTakeProfits', 0)))}")
             with tp_col2:
-                st.metric("Stop-Losses", f"{int(metrics['NumStopLosses'])}")
+                st.metric("Stop-Losses", f"{int(metrics.get('num_sl', metrics.get('NumStopLosses', 0)))}")
             with tp_col3:
-                st.metric("Realized Gain", f"${metrics['TotalRealizedGain']:,.2f}")
+                st.metric("Realized Gain", f"${metrics.get('total_realized_gain', metrics.get('TotalRealizedGain', 0.0)):,.2f}")
             with tp_col4:
-                st.metric("Realized Loss", f"${metrics['TotalRealizedLoss']:,.2f}")
-            st.metric("Net Realized P/L", f"${metrics['NetRealizedPnl']:,.2f}")
+                st.metric("Realized Loss", f"${metrics.get('total_realized_loss', metrics.get('TotalRealizedLoss', 0.0)):,.2f}")
+            st.metric("Net Realized P/L", f"${metrics.get('net_realized_pnl', metrics.get('NetRealizedPnl', 0.0)):,.2f}")
 
         # Full metrics JSON (collapsible)
         with st.expander("📋 Full Metrics (JSON)"):

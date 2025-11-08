@@ -791,6 +791,55 @@ def run_backtest_v2(
     total_realized_loss = abs(ledger[ledger["RealizedPnl"] < 0]["RealizedPnl"].sum())
     net_realized_pnl = total_realized_gain - total_realized_loss
     
+    # Benchmark CAGR (Buy & Hold)
+    benchmark_start_date = ledger.index[0]
+    benchmark_end_date = ledger.index[-1]
+    benchmark_start_price = float(prices["AdjClose"].iloc[0])
+    benchmark_end_price = float(prices["AdjClose"].iloc[-1])
+    
+    if benchmark_start_date == benchmark_end_date:
+        benchmark_cagr = 0.0
+    elif benchmark_start_price <= 0 or benchmark_end_price <= 0:
+        benchmark_cagr = 0.0
+    else:
+        benchmark_days = (benchmark_end_date - benchmark_start_date).days if hasattr(benchmark_end_date, 'days') else (pd.Timestamp(benchmark_end_date) - pd.Timestamp(benchmark_start_date)).days
+        if benchmark_days > 0:
+            benchmark_years = benchmark_days / 365.25
+            benchmark_cagr = (benchmark_end_price / benchmark_start_price) ** (1.0 / benchmark_years) - 1.0
+        else:
+            benchmark_cagr = 0.0
+    
+    # XIRR (Internal Rate of Return)
+    # Calculate cash flows for XIRR
+    cash_flows = ledger["CashFlow"].copy()
+    dates = cash_flows.index
+    
+    # Only calculate XIRR if there are cash flows
+    xirr_value = 0.0
+    if len(cash_flows[cash_flows != 0]) > 1:
+        try:
+            # Prepare dates and amounts for XIRR calculation
+            xirr_dates = []
+            xirr_amounts = []
+            
+            # Add all cash flows
+            for date, amount in zip(dates, cash_flows):
+                if abs(amount) > 1e-9:  # Non-zero cash flow
+                    xirr_dates.append(date)
+                    xirr_amounts.append(float(amount))
+            
+            # Add final NAV as positive cash flow (terminal value)
+            if ending_nav > 1e-9:
+                xirr_dates.append(dates[-1])
+                xirr_amounts.append(float(ending_nav))
+            
+            if len(xirr_dates) > 1:
+                # xirr function signature: xirr(values, dates)
+                xirr_value = xirr(xirr_amounts, [pd.Timestamp(d).to_pydatetime() for d in xirr_dates])
+        except Exception:
+            # XIRR calculation failed, use 0.0
+            xirr_value = 0.0
+    
     metrics = {
         "total_invested": total_invested,
         "ending_equity": ending_equity,
@@ -798,7 +847,9 @@ def run_backtest_v2(
         "profit": profit,
         "cumulative_return": cumulative_return,
         "cagr": cagr,
+        "benchmark_cagr": benchmark_cagr,
         "mdd": mdd,
+        "xirr": xirr_value,
         "total_trades": total_trades,
         "num_buys": num_buys,
         "num_tp": num_tp,
