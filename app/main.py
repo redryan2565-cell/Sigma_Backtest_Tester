@@ -63,6 +63,14 @@ try:
     # Safe attribute access with fallback defaults
     DEVELOPER_MODE = getattr(_settings, 'developer_mode', False)
     debug_mode = getattr(_settings, 'debug_mode', False)
+    
+    # Debug: Print settings for troubleshooting
+    import os
+    if os.getenv("DEBUG_SETTINGS", "").lower() == "true":
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Settings loaded: DEVELOPER_MODE={DEVELOPER_MODE}, DEBUG_MODE={debug_mode}")
+        logger.info(f"Environment: DEVELOPER_MODE={os.getenv('DEVELOPER_MODE')}, DEBUG_MODE={os.getenv('DEBUG_MODE')}")
 except Exception as e:
     # Fallback to safe defaults if settings loading fails
     import logging
