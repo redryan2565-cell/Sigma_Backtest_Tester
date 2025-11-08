@@ -1028,14 +1028,22 @@ def main() -> None:
                 universal_preset_options = list(UNIVERSAL_PRESETS.keys()) if UNIVERSAL_PRESETS else []
                 
                 if universal_preset_options:
-                    # Get current selection from session_state to maintain state after rerun
-                    # Use universal_preset_selector if available (user's current selection), otherwise use universal_preset_loaded
-                    current_selection = st.session_state.get('universal_preset_selector', None)
-                    if current_selection not in universal_preset_options:
-                        # Fallback to universal_preset_loaded if selector is not valid
-                        current_selection = st.session_state.get('universal_preset_loaded', "")
-                        if current_selection not in universal_preset_options:
-                            current_selection = None
+                    # Get current selection from session_state
+                    # Priority: universal_preset_loaded (source of truth) > universal_preset_selector (UI state)
+                    # If universal_preset_loaded doesn't exist, clear selector to ensure unselected state
+                    universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
+                    
+                    if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
+                        # Preset is loaded, use it
+                        current_selection = universal_preset_loaded_value
+                        # Ensure selector matches
+                        if st.session_state.get('universal_preset_selector') != current_selection:
+                            st.session_state['universal_preset_selector'] = current_selection
+                    else:
+                        # No preset loaded, ensure selector is cleared
+                        if 'universal_preset_selector' in st.session_state:
+                            del st.session_state['universal_preset_selector']
+                        current_selection = None
                     
                     # Determine index for radio button (None if no selection)
                     radio_index = None
