@@ -1227,7 +1227,7 @@ def main() -> None:
                 uploaded_file = st.file_uploader(
                     "Import JSON",
                     type=["json"],
-                    help="JSON 파일을 업로드하여 preset 불러오기",
+                    help="JSON 파일을 업로드하여 preset 불러오기 (최대 5개, 파일 크기 1MB 이하)",
                     key="upload_presets_file"
                 )
                 if uploaded_file is not None:
@@ -1260,22 +1260,51 @@ def main() -> None:
                     else:
                         # New file, process it
                         try:
-                            presets_data = json.load(uploaded_file)
-                            if isinstance(presets_data, dict):
-                                # Check if preset_manager has import_all method
-                                if hasattr(preset_manager, 'import_all'):
-                                    preset_manager.import_all(presets_data)
-                                    # Mark this file as processed
-                                    st.session_state['processed_import_files'].add(file_id)
-                                    # Store as last imported file and count
-                                    st.session_state['last_imported_file_id'] = file_id
-                                    st.session_state['last_imported_count'] = len(presets_data)
-                                    st.success(f"✅ Imported {len(presets_data)} preset(s)")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ Import not supported with current preset manager")
+                            # Security: File size limit (1MB)
+                            MAX_FILE_SIZE = 1024 * 1024  # 1MB
+                            if uploaded_file.size > MAX_FILE_SIZE:
+                                st.error(f"❌ File size exceeds limit. Maximum size: {MAX_FILE_SIZE / 1024:.0f}KB")
                             else:
-                                st.error("❌ Invalid preset file format. Expected a JSON object.")
+                                # Reset file pointer to beginning
+                                uploaded_file.seek(0)
+                                presets_data = json.load(uploaded_file)
+                                
+                                if isinstance(presets_data, dict):
+                                    # Security: Limit number of presets (max 5)
+                                    MAX_PRESETS = 5
+                                    preset_count = len(presets_data)
+                                    
+                                    if preset_count > MAX_PRESETS:
+                                        st.error(f"❌ Too many presets. Maximum allowed: {MAX_PRESETS}, found: {preset_count}")
+                                    elif preset_count == 0:
+                                        st.warning("⚠️ No presets found in file.")
+                                    else:
+                                        # Security: Validate preset names (prevent injection)
+                                        invalid_names = []
+                                        for name in presets_data.keys():
+                                            if not isinstance(name, str) or len(name) > 100 or not name.strip():
+                                                invalid_names.append(name)
+                                            # Check for potentially dangerous characters
+                                            if any(char in name for char in ['..', '/', '\\', '\x00']):
+                                                invalid_names.append(name)
+                                        
+                                        if invalid_names:
+                                            st.error(f"❌ Invalid preset names detected: {', '.join(invalid_names[:5])}")
+                                        else:
+                                            # Check if preset_manager has import_all method
+                                            if hasattr(preset_manager, 'import_all'):
+                                                preset_manager.import_all(presets_data)
+                                                # Mark this file as processed
+                                                st.session_state['processed_import_files'].add(file_id)
+                                                # Store as last imported file and count
+                                                st.session_state['last_imported_file_id'] = file_id
+                                                st.session_state['last_imported_count'] = preset_count
+                                                st.success(f"✅ Imported {preset_count} preset(s)")
+                                                st.rerun()
+                                            else:
+                                                st.error("❌ Import not supported with current preset manager")
+                                else:
+                                    st.error("❌ Invalid preset file format. Expected a JSON object.")
                         except json.JSONDecodeError as exc:
                             st.error(f"❌ Failed to parse JSON file: {exc}")
                         except Exception as exc:
