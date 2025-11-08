@@ -1071,9 +1071,8 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> tuple[pd.DataF
     ending_profit = float(ledger["Profit"].iloc[-1])
     ending_nav_including_invested = float(ledger["NAV_including_invested"].iloc[-1])
     hit_days = int(signals.sum())
-    trades = int((ledger["BuyAmt"] > 0).sum())
-
-    # TP/SL metrics
+    
+    # TP/SL metrics (calculate first to include in trades count)
     num_take_profits = 0
     num_stop_losses = 0
     total_realized_gain = 0.0
@@ -1090,6 +1089,9 @@ def run_backtest(prices: pd.DataFrame, params: BacktestParams) -> tuple[pd.DataF
 
         if "PositionCost" in ledger.columns:
             ending_position_cost = float(ledger["PositionCost"].iloc[-1])
+    
+    # Total trades = buy trades + TP triggers + SL triggers
+    trades = int((ledger["BuyAmt"] > 0).sum()) + num_take_profits + num_stop_losses
 
     # Cumulative return
     if total_invested > 1e-9:
