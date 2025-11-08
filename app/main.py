@@ -303,6 +303,14 @@ def main() -> None:
 
     # AI 생성 앱 경고 문구 (모든 페이지 상단에 고정 표시)
     st.info("⚠️ 이 백테스트 앱은 AI로 만든 앱이여서 오류가 있을수 있습니다. 유의하여주세요.")
+    
+    # Developer/Debug Mode 상태 표시 (디버깅용)
+    if os.getenv("DEBUG_SETTINGS", "").lower() in ("true", "1", "yes"):
+        mode_status = f"🔧 DEVELOPER_MODE={DEVELOPER_MODE} | DEBUG_MODE={debug_mode}"
+        if DEVELOPER_MODE:
+            st.success(mode_status)
+        else:
+            st.warning(mode_status + " (환경 변수 확인 필요)")
 
     # About page
     if view_mode == "About":
