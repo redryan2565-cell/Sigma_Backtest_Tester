@@ -910,8 +910,10 @@ def main() -> None:
             # Check if ticker was modified by comparing with previous value
             if 'previous_ticker_input' in st.session_state:
                 if st.session_state['previous_ticker_input'] != ticker:
-                    # Skip if this change came from a preset (pending_ticker_update)
-                    if 'pending_ticker_update' not in st.session_state:
+                    # Skip if this change came from a preset (user_modified_ticker is False)
+                    # user_modified_ticker is set to False when preset updates ticker (line 890)
+                    if st.session_state.get('user_modified_ticker', True):
+                        # This is a user-initiated change, not from preset
                         # Check if universal preset is loaded and ticker doesn't match preset ticker
                         if 'universal_preset_loaded' in st.session_state and st.session_state.get('universal_preset_loaded'):
                             # Get the preset ticker to compare
@@ -927,11 +929,15 @@ def main() -> None:
                                     del st.session_state['universal_preset']
                                 # Mark ticker as user-modified
                                 st.session_state['user_modified_ticker'] = True
+                                # Update previous_ticker_input before rerun
+                                st.session_state['previous_ticker_input'] = ticker
                                 # Trigger rerun to update UI (preset selector will show "None")
                                 st.rerun()
                         else:
                             # No universal preset loaded, just mark as user-modified
                             st.session_state['user_modified_ticker'] = True
+            
+            # Update previous_ticker_input after all checks
             st.session_state['previous_ticker_input'] = ticker
 
             # Ticker validation
