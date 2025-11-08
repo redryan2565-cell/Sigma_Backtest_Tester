@@ -925,11 +925,10 @@ def main() -> None:
                                 del st.session_state['universal_preset_loaded']
                             if 'universal_preset' in st.session_state:
                                 del st.session_state['universal_preset']
-                            # Set radio button to "None"
-                            st.session_state['universal_preset_selector'] = "None"
+                            # Don't set universal_preset_selector here - let index handle it in next run
                             # Update previous_ticker_input before rerun
                             st.session_state['previous_ticker_input'] = ticker
-                            # Trigger rerun to update UI (preset selector will show "None")
+                            # Trigger rerun to update UI (preset selector will show "None" via index=0)
                             st.rerun()
                         else:
                             # Ticker is one of the universal preset tickers, auto-select corresponding preset
@@ -950,9 +949,7 @@ def main() -> None:
                                         st.session_state['universal_preset_loaded'] = preset_name
                                         st.session_state['universal_preset'] = universal_preset
                                         
-                                        # Set radio button state to match preset (will be used in next rerun)
-                                        st.session_state['universal_preset_selector'] = preset_name
-                                        
+                                        # Don't set universal_preset_selector here - let index handle it in next run
                                         # Apply preset values immediately by updating session_state
                                         st.session_state['start_date_input'] = universal_preset.start_date
                                         st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
@@ -1027,28 +1024,18 @@ def main() -> None:
                 universal_preset_options = list(UNIVERSAL_PRESETS.keys()) if UNIVERSAL_PRESETS else []
                 
                 if universal_preset_options:
-                    # Get current selection from session_state
-                    # Use universal_preset_selector if available, otherwise check universal_preset_loaded
-                    current_selection = st.session_state.get('universal_preset_selector', None)
-                    
-                    # If selector is not set or not valid, check universal_preset_loaded
-                    if not current_selection or current_selection not in ["None"] + universal_preset_options:
-                        universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
-                        if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
-                            current_selection = universal_preset_loaded_value
-                            st.session_state['universal_preset_selector'] = current_selection
-                        else:
-                            # No preset loaded, default to "None"
-                            current_selection = "None"
-                            st.session_state['universal_preset_selector'] = "None"
-                    
-                    # Determine index for radio button
+                    # Determine index for radio button based on universal_preset_loaded
+                    # Don't set universal_preset_selector before widget creation to avoid warning
                     # "None" is first option (index 0), then preset options
                     radio_options = ["None"] + universal_preset_options
-                    if current_selection in radio_options:
-                        radio_index = radio_options.index(current_selection)
+                    universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
+                    
+                    if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
+                        # Preset is loaded, select corresponding option
+                        radio_index = radio_options.index(universal_preset_loaded_value)
                     else:
-                        radio_index = 0  # Default to "None"
+                        # No preset loaded, default to "None"
+                        radio_index = 0  # "None" is first option
                     
                     selected_universal = st.radio(
                         "Select Quick Preset",
