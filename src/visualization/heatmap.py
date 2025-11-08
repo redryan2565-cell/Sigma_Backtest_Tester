@@ -70,13 +70,17 @@ def create_monthly_returns_heatmap(
         if len(group) < 1:
             continue
 
-        # Get first and last ratio of the month
-        first_ratio = group.iloc[0]
-        last_ratio = group.iloc[-1]
-
-        # Skip if first ratio is invalid
-        if first_ratio <= 1e-9 or not np.isfinite(first_ratio):
+        # Filter valid ratios (finite and > 1e-9)
+        valid_mask = (group > 1e-9) & np.isfinite(group)
+        valid_group = group[valid_mask]
+        
+        if len(valid_group) < 1:
             continue
+
+        # Get first and last valid ratio of the month
+        # This handles cases where the first day of the month has no position
+        first_ratio = valid_group.iloc[0]
+        last_ratio = valid_group.iloc[-1]
 
         # Calculate monthly return: (last_ratio / first_ratio) - 1
         # This shows the change in portfolio value multiplier during the month
@@ -85,8 +89,9 @@ def create_monthly_returns_heatmap(
         # Filter out infinity and NaN values
         if np.isfinite(monthly_return):
             monthly_returns_list.append(monthly_return)
-            # Use the last day of the month as the index (safely handle day)
-            last_day = min(group.index[-1].day, 28)  # Cap at 28 to avoid month-end issues
+            # Use the last valid day of the month as the index (safely handle day)
+            last_valid_day = valid_group.index[-1]
+            last_day = min(last_valid_day.day, 28)  # Cap at 28 to avoid month-end issues
             try:
                 monthly_dates.append(pd.Timestamp(year=year, month=month, day=last_day))
             except (ValueError, pd.errors.OutOfBoundsDatetime):
@@ -95,8 +100,8 @@ def create_monthly_returns_heatmap(
                     next_month = pd.Timestamp(year=year, month=month, day=1) + pd.DateOffset(months=1)
                     monthly_dates.append(next_month - pd.Timedelta(days=1))
                 except Exception:
-                    # Final fallback: use last day of group
-                    monthly_dates.append(group.index[-1])
+                    # Final fallback: use last valid day of group
+                    monthly_dates.append(last_valid_day)
 
     if not monthly_returns_list:
         return None
