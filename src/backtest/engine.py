@@ -25,8 +25,12 @@ class BacktestParams:
     sl_threshold: float | None = None  # Stop-loss threshold as decimal (e.g., -0.25 for -25%)
     tp_sell_percentage: float = 1.0  # Fraction of shares to sell on TP trigger (0.25, 0.50, 0.75, or 1.0)
     sl_sell_percentage: float = 1.0  # Fraction of shares to sell on SL trigger (0.25, 0.50, 0.75, or 1.0)
-    # Baseline reset and hysteresis/cooldown parameters
-    reset_baseline_after_tp_sl: bool = True  # Reset ROI baseline after TP/SL trigger (default: ON)
+    # TP/SL Mode and Advanced Options (ACB-based)
+    tp_mode: str = "A"  # "A" (Anchor - maintain anchor) or "B" (Reset - reset on trigger)
+    same_bar_reuse: bool = False  # Allow reusing realized cash from TP/SL on same bar for buy
+    anchor_init_mode: str = "peak"  # "peak" or "entry" - anchor initialization mode
+    # Deprecated: reset_baseline_after_tp_sl (replaced by tp_mode)
+    reset_baseline_after_tp_sl: bool | None = None  # Deprecated, use tp_mode instead
     tp_hysteresis: float = 0.0  # TP hysteresis percentage (e.g., 0.10 for 10%, default: 0 = disabled)
     sl_hysteresis: float = 0.0  # SL hysteresis percentage (e.g., 0.10 for 10%, default: 0 = disabled)
     tp_cooldown_days: int = 0  # TP cooldown period in days (default: 0 = disabled)
@@ -34,6 +38,23 @@ class BacktestParams:
 
     def __post_init__(self):
         """Validate TP/SL parameters."""
+        # Deprecated parameter warning
+        if self.reset_baseline_after_tp_sl is not None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "reset_baseline_after_tp_sl is deprecated and will be ignored. "
+                "Use tp_mode='A' or tp_mode='B' instead."
+            )
+        
+        # Validate TP Mode
+        if self.tp_mode not in ["A", "B"]:
+            raise ValueError("tp_mode must be 'A' (Anchor) or 'B' (Reset)")
+        
+        # Validate anchor_init_mode
+        if self.anchor_init_mode not in ["peak", "entry"]:
+            raise ValueError("anchor_init_mode must be 'peak' or 'entry'")
+        
         # Validate TP parameters if TP is enabled
         if self.tp_threshold is not None:
             if self.tp_threshold <= 0:
@@ -139,23 +160,32 @@ def compute_ledger(
     tp_triggered = np.zeros(n, dtype=bool)
     sl_triggered = np.zeros(n, dtype=bool)
 
-    # State variables (updated sequentially)
+    # ===== State variables (ACB-based system) =====
+    
+    # Shares and cash flow tracking (for display/validation)
     cum_shares = 0.0
     cum_cash_flow = 0.0
     cum_invested = 0.0
-    position_cost = 0.0  # Cost basis of current holdings
-    roi_base: float | None = None  # Baseline NAV for TP/SL calculation (reset after TP/SL)
-    last_tp_date_idx: int | None = None  # Last TP trigger date index (for cooldown)
-    last_sl_date_idx: int | None = None  # Last SL trigger date index (for cooldown)
-    tp_hysteresis_active = False  # TP hysteresis active state
-    sl_hysteresis_active = False  # SL hysteresis active state
-    roi_base_history: list[tuple[int, float, str]] = []  # History of ROI baseline resets: [(date_idx, roi_base_value, trigger_type), ...]
+    position_cost = 0.0  # ACB × qty (for display compatibility)
+    
+    # ACB (Average Cost Basis) - Accounting Layer
+    avg_cost = 0.0  # Average cost per share (updated on buy only, unchanged on sell)
+    
+    # Anchor - Trigger Layer (TP/SL trigger calculations)
+    anchor_price = 0.0  # TP/SL anchor price (reset behavior depends on tp_mode)
+    peak_price = 0.0    # Peak price since entry (for anchor_init_mode="peak")
+    
+    # 2-Wallet System - Cash Layer
+    profit_cash = 0.0     # Realized profit from TP (always >= 0)
+    principal_cash = 0.0  # Principal cash (can go negative with infinite capital assumption)
+    
+    # Trigger Control - Hysteresis/Cooldown/Lock
+    tp_cooldown_remaining = 0  # TP cooldown remaining bars
+    sl_cooldown_remaining = 0  # SL cooldown remaining bars
+    tp_hysteresis_active = False  # TP hysteresis state
+    sl_hysteresis_active = False  # SL hysteresis state
 
-    # Position tracking: FIFO queue of (entry_date_idx, shares, entry_price)
-    # Used to track holding period for TP/SL triggers
-    positions: list[tuple[int, float, float]] = []  # [(entry_date_idx, shares, entry_price), ...]
-
-    # Arrays to store cumulative values
+    # Arrays to store cumulative values (display/validation)
     cum_shares_arr = np.zeros(n, dtype=float)
     cum_cash_flow_arr = np.zeros(n, dtype=float)
     cum_invested_arr = np.zeros(n, dtype=float)
@@ -168,58 +198,63 @@ def compute_ledger(
     unrealized_pnl_arr = np.zeros(n, dtype=float)
     profit_arr = np.zeros(n, dtype=float)  # Profit = Equity + CumCashFlow
     nav_including_invested_arr = np.zeros(n, dtype=float)  # NAV_including_invested = CumInvested + Profit
-    roi_base_arr = np.zeros(n, dtype=float)
-    roi_base_arr[:] = np.nan  # Initialize as NaN (will be set when holdings exist)
+    post_sell_cum_shares_arr = np.zeros(n, dtype=float)
+    
+    # ACB arrays (new)
+    avg_cost_arr = np.zeros(n, dtype=float)
+    
+    # Anchor arrays (new)
+    anchor_price_arr = np.zeros(n, dtype=float)
+    peak_price_arr = np.zeros(n, dtype=float)
+    ret_anchor_arr = np.zeros(n, dtype=float)  # Anchor-based return (%)
+    ret_anchor_arr[:] = np.nan
+    
+    # Wallet arrays (new)
+    profit_cash_arr = np.zeros(n, dtype=float)
+    principal_cash_arr = np.zeros(n, dtype=float)
+    
+    # Trigger control arrays (new)
+    tp_cooldown_arr = np.zeros(n, dtype=int)
+    sl_cooldown_arr = np.zeros(n, dtype=int)
+    
+    # Legacy arrays (for compatibility/debugging - may be removed later)
     nav_return_global_arr = np.zeros(n, dtype=float)
     nav_return_baselined_arr = np.zeros(n, dtype=float)
-    nav_return_baselined_arr[:] = np.nan  # Initialize as NaN (will be set when roi_base exists)
-    post_sell_cum_shares_arr = np.zeros(n, dtype=float)
-
-    # Debugging arrays for TP/SL validation
-    weighted_avg_entry_price_arr = np.zeros(n, dtype=float)
-    weighted_avg_entry_price_arr[:] = np.nan  # Initialize as NaN
-    position_return_arr = np.zeros(n, dtype=float)
-    position_return_arr[:] = np.nan  # Initialize as NaN
+    nav_return_baselined_arr[:] = np.nan
     portfolio_return_ratio_arr = np.zeros(n, dtype=float)
-    portfolio_return_ratio_arr[:] = np.nan  # Initialize as NaN
-    tp_sell_price_arr = np.zeros(n, dtype=float)
-    tp_sell_price_arr[:] = np.nan  # Initialize as NaN
-    tp_entry_reset_price_arr = np.zeros(n, dtype=float)
-    tp_entry_reset_price_arr[:] = np.nan  # Initialize as NaN
+    portfolio_return_ratio_arr[:] = np.nan
 
-    # Process each day sequentially
+    # Process each day sequentially (ACB-based system with anchor TP/SL)
     for i, day in enumerate(idx):
-        # Use array indexing for performance (faster than .loc)
+        # Use array indexing for performance
         adj_price = adj_arr[i]
         px_exec_buy_price = px_exec_buy_arr[i]
         px_exec_sell_price = px_exec_sell_arr[i]
-
-        # ===== STEP 1: Process buy logic FIRST =====
-        # Buy logic is processed first, then TP/SL check happens AFTER buy
-        # This ensures that TP/SL cannot trigger on the same day as a buy
-        shares_bought_today = 0.0
-
-        # Always use shares-based mode (optimized: use numpy array instead of pandas iloc)
-        if signals_arr[i]:  # Use numpy array for faster indexing
-            shares_fixed = float(params.shares_per_signal)
-            shares_bought[i] = shares_fixed
-            buy_amt[i] = shares_fixed * px_exec_buy_price
-            fee[i] = buy_amt[i] * float(params.fee_rate)
-            shares_bought_today = shares_fixed
-
-        # Update state for buys
-        if shares_bought_today > 0:
-            total_cost = buy_amt[i] + fee[i]
-            cum_shares += shares_bought_today
-            position_cost += total_cost
-            cum_invested += total_cost
-            # Add buy cost to cash flow
-            cash_flow[i] -= total_cost
-
-            # Add new position to tracking list (FIFO queue)
-            # entry_price includes slippage and fee per share
-            entry_price_per_share = px_exec_buy_price * (1.0 + float(params.fee_rate))
-            positions.append((i, shares_bought_today, entry_price_per_share))
+        
+        # ===== STEP 1: Snapshot (optional, for logging/debugging) =====
+        # snapshot = {
+        #     'qty': cum_shares,
+        #     'avg_cost': avg_cost,
+        #     'anchor': anchor_price,
+        #     'peak': peak_price,
+        #     'profit_cash': profit_cash,
+        #     'principal_cash': principal_cash,
+        # }
+        
+        # ===== STEP 2: Cooldown Decrement =====
+        if tp_cooldown_remaining > 0:
+            tp_cooldown_remaining -= 1
+        if sl_cooldown_remaining > 0:
+            sl_cooldown_remaining -= 1
+        
+        # ===== STEP 3: TP/SL Trigger Check =====
+        tp_triggered_this_bar = False
+        sl_triggered_this_bar = False
+        
+        # Only check if we have shares and didn't buy today
+        if cum_shares > 1e-9 and anchor_price > 1e-9:
+            # Calculate anchor-based return
+            ret_anchor = (adj_price / anchor_price) - 1.0
 
         # ===== STEP 2: Check TP/SL triggers AFTER buy =====
         # IMPORTANT: TP/SL triggers are based on entry_price of positions, not NAVReturn_baselined
@@ -606,7 +641,6 @@ def compute_ledger(
         "NAVReturn": pd.Series(nav_return_arr, index=idx),
         "NAVReturn_global": pd.Series(nav_return_global_arr, index=idx),
         "NAVReturn_baselined": pd.Series(nav_return_baselined_arr, index=idx),
-        "ROI_base": pd.Series(roi_base_arr, index=idx),
         "PortfolioReturn": pd.Series(portfolio_return_arr, index=idx),
         "PositionCost": pd.Series(position_cost_arr, index=idx),
         "UnrealizedPnl": pd.Series(unrealized_pnl_arr, index=idx),
@@ -621,12 +655,20 @@ def compute_ledger(
         "NetProceeds": pd.Series(net_proceeds, index=idx),
         "RealizedPnl": pd.Series(realized_pnl, index=idx),
         "PostSellCumShares": pd.Series(post_sell_cum_shares_arr, index=idx),
-        # Debugging columns for TP/SL validation
-        "WeightedAvgEntryPrice": pd.Series(weighted_avg_entry_price_arr, index=idx),
-        "PositionReturn": pd.Series(position_return_arr, index=idx),
+        # ACB system columns
+        "AvgCost": pd.Series(avg_cost_arr, index=idx),
+        # Anchor system columns  
+        "AnchorPrice": pd.Series(anchor_price_arr, index=idx),
+        "PeakPrice": pd.Series(peak_price_arr, index=idx),
+        "RetAnchor": pd.Series(ret_anchor_arr, index=idx),
+        # Wallet system columns
+        "ProfitCash": pd.Series(profit_cash_arr, index=idx),
+        "PrincipalCash": pd.Series(principal_cash_arr, index=idx),
+        # Trigger control columns
+        "TPCooldown": pd.Series(tp_cooldown_arr, index=idx),
+        "SLCooldown": pd.Series(sl_cooldown_arr, index=idx),
+        # Legacy debugging columns (may be removed later)
         "PortfolioReturnRatio": pd.Series(portfolio_return_ratio_arr, index=idx),
-        "TP_SellPrice": pd.Series(tp_sell_price_arr, index=idx),
-        "TP_EntryResetPrice": pd.Series(tp_entry_reset_price_arr, index=idx),
     }, index=idx)
 
     # Validate invariants

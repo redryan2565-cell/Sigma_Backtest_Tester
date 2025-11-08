@@ -42,6 +42,7 @@ if Path(__file__).parent.parent.parent.exists():
     sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.backtest.engine import BacktestParams, run_backtest
+from src.backtest.engine_v2 import BacktestParamsV2, run_backtest_v2
 from src.config import get_settings
 from src.data.providers.yfin import YFinanceFeed
 
@@ -1421,6 +1422,38 @@ def main() -> None:
 
             # Take-Profit / Stop-Loss section
             st.header("Take-Profit / Stop-Loss")
+            
+            # TP Mode selection (New in V2)
+            st.subheader("TP Mode (Take-Profit Strategy)")
+            tp_mode = st.radio(
+                "TP Mode",
+                options=["A (Anchor - 앵커 유지형)", "B (Reset - 리셋형)"],
+                index=0,
+                help="""
+                **A 모드 (Anchor - 앵커 유지형)**:
+                - 부분익절 시 앵커 유지 → 추가 상승 시에만 재트리거
+                - 전량익절 시 앵커 리셋
+                - 장기 투자, 추세 동행 전략에 적합
+                - 거래 빈도 낮음
+                
+                **B 모드 (Reset - 리셋형)**:
+                - TP 트리거 시점에 앵커=현재가로 즉시 리셋
+                - 0% 수익률에서 다시 시작
+                - 회전율 높은 전략, 단타에 적합
+                - 거래 빈도 높음 (Hysteresis/Cooldown 필수)
+                """
+            )
+            tp_mode_value = "A" if "A" in tp_mode else "B"
+            
+            # Same-Bar Reuse option (Advanced)
+            same_bar_reuse = st.checkbox(
+                "동일바 재사용 (Same-Bar Reuse)",
+                value=False,
+                help="""
+                **Off (기본값, 권장)**: TP/SL 발생한 바에서는 매수 신호가 있어도 매수하지 않음 (보수적)
+                **On**: TP/SL 발생한 바에서도 실현된 현금을 즉시 재사용하여 매수 가능 (공격적)
+                """
+            )
 
             # Initialize values from loaded preset if available
             tp_threshold = None
@@ -1528,13 +1561,9 @@ def main() -> None:
                 else:
                     sl_sell_percentage = 1.0  # Default value when SL is disabled
 
-                # Baseline reset and advanced options
-                st.subheader("Baseline Reset Options")
-                reset_baseline_after_tp_sl = st.checkbox(
-                    "Reset baseline after TP/SL",
-                    value=reset_baseline_after_tp_sl,
-                    help="Reset ROI baseline after TP/SL trigger to prevent consecutive triggers. Recommended: ON."
-                )
+                # Baseline reset option removed (replaced by TP Mode A/B)
+                # Legacy compatibility: set to None (will be ignored by V2 engine)
+                reset_baseline_after_tp_sl = None
 
                 # Hysteresis/Cooldown Presets
                 st.subheader("Hysteresis & Cooldown Presets")
@@ -1798,24 +1827,29 @@ def main() -> None:
         # Run backtest with spinner
         with st.spinner("🔄 Running backtest..."):
             try:
-                params = BacktestParams(
+                # Use V2 engine (ACB-based)
+                params_v2 = BacktestParamsV2(
                     threshold=float(threshold) / 100.0 if threshold is not None else 0.0,
-                    shares_per_signal=float(shares_per_signal) if shares_per_signal else None,
+                    shares_per_signal=float(shares_per_signal) if shares_per_signal else 1.0,
                     fee_rate=float(fee_rate) / 100.0 if fee_rate is not None else 0.0,
                     slippage_rate=float(slippage_rate) / 100.0 if slippage_rate is not None else 0.0025,
-                    enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),  # Auto-set based on thresholds
+                    enable_tp_sl=(tp_threshold is not None or sl_threshold is not None),
                     tp_threshold=float(tp_threshold) / 100.0 if tp_threshold is not None else None,
                     sl_threshold=float(sl_threshold) / 100.0 if sl_threshold is not None else None,
                     tp_sell_percentage=tp_sell_percentage,
                     sl_sell_percentage=sl_sell_percentage,
-                    reset_baseline_after_tp_sl=reset_baseline_after_tp_sl,
+                    tp_mode=tp_mode_value,  # V2: "A" or "B"
+                    same_bar_reuse=same_bar_reuse,  # V2: default False
+                    anchor_init_mode="peak",  # V2: default "peak"
                     tp_hysteresis=float(tp_hysteresis) / 100.0 if tp_hysteresis is not None else 0.0,
                     sl_hysteresis=float(sl_hysteresis) / 100.0 if sl_hysteresis is not None else 0.0,
                     tp_cooldown_days=int(tp_cooldown_days) if tp_cooldown_days is not None else 0,
                     sl_cooldown_days=int(sl_cooldown_days) if sl_cooldown_days is not None else 0,
                 )
 
-                daily, metrics = run_backtest(prices, params)
+                result_v2 = run_backtest_v2(prices, params_v2)
+                daily = result_v2["ledger"]
+                metrics = result_v2["metrics"]
                 st.success("✅ Backtest completed successfully!")
             except Exception as exc:
                 # Sanitize error message: don't expose system details

@@ -79,7 +79,7 @@ def _init_universal_presets() -> None:
     common_shares = 1.0
     common_tp_sl_enabled = False
     
-    # TQQQ preset
+    # TQQQ preset (V2 engine)
     tqqq_params = BacktestParams(
         threshold=-0.041,  # -4.1%
         shares_per_signal=common_shares,
@@ -90,7 +90,10 @@ def _init_universal_presets() -> None:
         sl_threshold=None,
         tp_sell_percentage=1.0,
         sl_sell_percentage=1.0,
-        reset_baseline_after_tp_sl=True,
+        tp_mode="A",  # V2: Anchor maintain mode
+        same_bar_reuse=False,  # V2: default False
+        anchor_init_mode="peak",  # V2: default "peak"
+        reset_baseline_after_tp_sl=None,  # Deprecated (replaced by tp_mode)
         tp_hysteresis=0.0,
         sl_hysteresis=0.0,
         tp_cooldown_days=0,
@@ -104,7 +107,7 @@ def _init_universal_presets() -> None:
         end_date=None,  # Use current date
     )
     
-    # SOXL preset
+    # SOXL preset (V2 engine)
     soxl_params = BacktestParams(
         threshold=-0.072,  # -7.2%
         shares_per_signal=common_shares,
@@ -115,7 +118,10 @@ def _init_universal_presets() -> None:
         sl_threshold=None,
         tp_sell_percentage=1.0,
         sl_sell_percentage=1.0,
-        reset_baseline_after_tp_sl=True,
+        tp_mode="A",  # V2: Anchor maintain mode
+        same_bar_reuse=False,  # V2: default False
+        anchor_init_mode="peak",  # V2: default "peak"
+        reset_baseline_after_tp_sl=None,  # Deprecated
         tp_hysteresis=0.0,
         sl_hysteresis=0.0,
         tp_cooldown_days=0,
@@ -129,7 +135,7 @@ def _init_universal_presets() -> None:
         end_date=None,  # Use current date
     )
     
-    # QLD preset
+    # QLD preset (V2 engine)
     qld_params = BacktestParams(
         threshold=-0.025,  # -2.5%
         shares_per_signal=common_shares,
@@ -140,7 +146,10 @@ def _init_universal_presets() -> None:
         sl_threshold=None,
         tp_sell_percentage=1.0,
         sl_sell_percentage=1.0,
-        reset_baseline_after_tp_sl=True,
+        tp_mode="A",  # V2: Anchor maintain mode
+        same_bar_reuse=False,  # V2: default False
+        anchor_init_mode="peak",  # V2: default "peak"
+        reset_baseline_after_tp_sl=None,  # Deprecated
         tp_hysteresis=0.0,
         sl_hysteresis=0.0,
         tp_cooldown_days=0,
