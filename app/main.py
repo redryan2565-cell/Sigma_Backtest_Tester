@@ -1083,8 +1083,9 @@ def main() -> None:
                                 st.session_state['universal_preset_loaded'] = selected_universal
                                 st.session_state['universal_preset'] = universal_preset
                                 
-                                # Ensure radio button state matches (already set by Streamlit, but ensure consistency)
-                                st.session_state['universal_preset_selector'] = selected_universal
+                                # Note: Don't modify universal_preset_selector after radio button is created
+                                # Streamlit already set it when user selected the option
+                                # It will be synchronized in next run via the logic above (1035-1043)
                                 
                                 # Apply preset values immediately by updating session_state
                                 st.session_state['start_date_input'] = universal_preset.start_date
