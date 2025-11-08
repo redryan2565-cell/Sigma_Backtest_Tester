@@ -918,19 +918,18 @@ def main() -> None:
                         ticker_upper = ticker.upper()
                         universal_preset_tickers = ['TQQQ', 'SOXL', 'QLD']
                         
-                        # If ticker is not one of the universal preset tickers, clear preset
+                        # If ticker is not one of the universal preset tickers, select "None"
                         if ticker_upper not in universal_preset_tickers:
                             # Clear universal preset but keep other parameter values
                             if 'universal_preset_loaded' in st.session_state:
                                 del st.session_state['universal_preset_loaded']
                             if 'universal_preset' in st.session_state:
                                 del st.session_state['universal_preset']
-                            # Also clear radio button state to ensure UI synchronization
-                            if 'universal_preset_selector' in st.session_state:
-                                del st.session_state['universal_preset_selector']
+                            # Set radio button to "None"
+                            st.session_state['universal_preset_selector'] = "None"
                             # Update previous_ticker_input before rerun
                             st.session_state['previous_ticker_input'] = ticker
-                            # Trigger rerun to update UI (preset selector will be unselected)
+                            # Trigger rerun to update UI (preset selector will show "None")
                             st.rerun()
                         else:
                             # Ticker is one of the universal preset tickers, auto-select corresponding preset
@@ -951,7 +950,7 @@ def main() -> None:
                                         st.session_state['universal_preset_loaded'] = preset_name
                                         st.session_state['universal_preset'] = universal_preset
                                         
-                                        # Set radio button state to match (will be used in next rerun)
+                                        # Set radio button state to match preset (will be used in next rerun)
                                         st.session_state['universal_preset_selector'] = preset_name
                                         
                                         # Apply preset values immediately by updating session_state
@@ -1029,30 +1028,31 @@ def main() -> None:
                 
                 if universal_preset_options:
                     # Get current selection from session_state
-                    # Priority: universal_preset_loaded (source of truth) > universal_preset_selector (UI state)
-                    # If universal_preset_loaded doesn't exist, clear selector to ensure unselected state
-                    universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
+                    # Use universal_preset_selector if available, otherwise check universal_preset_loaded
+                    current_selection = st.session_state.get('universal_preset_selector', None)
                     
-                    if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
-                        # Preset is loaded, use it
-                        current_selection = universal_preset_loaded_value
-                        # Ensure selector matches
-                        if st.session_state.get('universal_preset_selector') != current_selection:
+                    # If selector is not set or not valid, check universal_preset_loaded
+                    if not current_selection or current_selection not in ["None"] + universal_preset_options:
+                        universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
+                        if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
+                            current_selection = universal_preset_loaded_value
                             st.session_state['universal_preset_selector'] = current_selection
-                    else:
-                        # No preset loaded, ensure selector is cleared
-                        if 'universal_preset_selector' in st.session_state:
-                            del st.session_state['universal_preset_selector']
-                        current_selection = None
+                        else:
+                            # No preset loaded, default to "None"
+                            current_selection = "None"
+                            st.session_state['universal_preset_selector'] = "None"
                     
-                    # Determine index for radio button (None if no selection)
-                    radio_index = None
-                    if current_selection and current_selection in universal_preset_options:
-                        radio_index = universal_preset_options.index(current_selection)
+                    # Determine index for radio button
+                    # "None" is first option (index 0), then preset options
+                    radio_options = ["None"] + universal_preset_options
+                    if current_selection in radio_options:
+                        radio_index = radio_options.index(current_selection)
+                    else:
+                        radio_index = 0  # Default to "None"
                     
                     selected_universal = st.radio(
                         "Select Quick Preset",
-                        options=universal_preset_options,
+                        options=radio_options,
                         index=radio_index,
                         horizontal=True,
                         help="범용 preset을 선택하면 모든 설정이 자동으로 채워집니다. 티커를 TQQQ/SOXL/QLD로 변경하면 자동으로 해당 preset이 선택됩니다.",
@@ -1060,7 +1060,14 @@ def main() -> None:
                     )
                     
                     # Handle universal preset selection
-                    if selected_universal:
+                    if selected_universal == "None":
+                        # Clear preset when "None" is selected
+                        if 'universal_preset_loaded' in st.session_state:
+                            del st.session_state['universal_preset_loaded']
+                        if 'universal_preset' in st.session_state:
+                            del st.session_state['universal_preset']
+                        # No rerun needed - just visualization
+                    elif selected_universal:
                         # Check if this is a new selection (not already loaded)
                         current_loaded = st.session_state.get('universal_preset_loaded', "")
                         if selected_universal != current_loaded and get_universal_preset:
@@ -1076,6 +1083,9 @@ def main() -> None:
                                 st.session_state['universal_preset_loaded'] = selected_universal
                                 st.session_state['universal_preset'] = universal_preset
                                 
+                                # Ensure radio button state matches (already set by Streamlit, but ensure consistency)
+                                st.session_state['universal_preset_selector'] = selected_universal
+                                
                                 # Apply preset values immediately by updating session_state
                                 st.session_state['start_date_input'] = universal_preset.start_date
                                 st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
@@ -1085,16 +1095,7 @@ def main() -> None:
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
-                    else:
-                        # No preset selected - clear if one was loaded
-                        if 'universal_preset_loaded' in st.session_state and st.session_state.get('universal_preset_loaded'):
-                            del st.session_state['universal_preset_loaded']
-                            if 'universal_preset' in st.session_state:
-                                del st.session_state['universal_preset']
-                            # Also clear radio button state to ensure UI synchronization
-                            if 'universal_preset_selector' in st.session_state:
-                                del st.session_state['universal_preset_selector']
-                            st.rerun()
+                    # Note: else block removed - "None" is always an option, so selected_universal is always truthy
                     
                     # Show current universal preset status
                     if 'universal_preset_loaded' in st.session_state:
