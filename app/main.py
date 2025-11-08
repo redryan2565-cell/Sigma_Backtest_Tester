@@ -885,13 +885,12 @@ def main() -> None:
                 loaded_params = st.session_state['loaded_preset']
 
             # Handle pending ticker update from universal preset selection (before widget creation)
+            # This flag is set when preset is selected, and we need to ignore the ticker change in this run
+            preset_ticker_update_this_run = False
             if 'pending_ticker_update' in st.session_state:
                 st.session_state['ticker_input'] = st.session_state['pending_ticker_update']
-                st.session_state['user_modified_ticker'] = False  # Mark as preset update
+                preset_ticker_update_this_run = True  # Mark that this is a preset update
                 del st.session_state['pending_ticker_update']
-            else:
-                # If no pending update, allow user modifications (preset update already processed)
-                st.session_state['user_modified_ticker'] = True
             
             # Initialize ticker_input in session_state if not present
             if 'ticker_input' not in st.session_state:
@@ -913,13 +912,9 @@ def main() -> None:
             # Check if ticker was modified by comparing with previous value
             if 'previous_ticker_input' in st.session_state:
                 if st.session_state['previous_ticker_input'] != ticker:
-                    # Only process if this is a user-initiated change (not from preset)
-                    # user_modified_ticker is False only when preset just updated ticker
-                    if st.session_state.get('user_modified_ticker', True):
+                    # Skip if this change came from a preset update (just processed in this run)
+                    if not preset_ticker_update_this_run:
                         # This is a user-initiated change, not from preset
-                        # Mark as user-modified
-                        st.session_state['user_modified_ticker'] = True
-                        
                         # Check if universal preset is loaded and ticker doesn't match preset ticker
                         if 'universal_preset_loaded' in st.session_state and st.session_state.get('universal_preset_loaded'):
                             # Get the preset ticker to compare
