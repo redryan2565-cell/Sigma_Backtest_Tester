@@ -58,25 +58,41 @@ except ImportError:
 
 # Initialize settings at module level for security configuration
 # This ensures settings are loaded once and available throughout the app
+import os
+
+# Check environment variables directly (for debugging)
+_env_developer = os.getenv("DEVELOPER_MODE", "").lower()
+_env_debug = os.getenv("DEBUG_MODE", "").lower()
+
 try:
     _settings = get_settings()
     # Safe attribute access with fallback defaults
     DEVELOPER_MODE = getattr(_settings, 'developer_mode', False)
     debug_mode = getattr(_settings, 'debug_mode', False)
     
-    # Debug: Print settings for troubleshooting
-    import os
-    if os.getenv("DEBUG_SETTINGS", "").lower() == "true":
+    # Force check environment variables if pydantic didn't parse correctly
+    # pydantic_settings should parse "true", "1", "yes" as True, but sometimes fails
+    if _env_developer in ("true", "1", "yes", "on"):
+        DEVELOPER_MODE = True
+    if _env_debug in ("true", "1", "yes", "on"):
+        debug_mode = True
+    
+    # Debug: Always print if DEBUG_SETTINGS is set
+    if os.getenv("DEBUG_SETTINGS", "").lower() in ("true", "1", "yes"):
         import logging
         logger = logging.getLogger(__name__)
-        logger.info(f"Settings loaded: DEVELOPER_MODE={DEVELOPER_MODE}, DEBUG_MODE={debug_mode}")
-        logger.info(f"Environment: DEVELOPER_MODE={os.getenv('DEVELOPER_MODE')}, DEBUG_MODE={os.getenv('DEBUG_MODE')}")
+        logger.info(f"=== Settings Debug ===")
+        logger.info(f"Environment vars: DEVELOPER_MODE='{os.getenv('DEVELOPER_MODE')}', DEBUG_MODE='{os.getenv('DEBUG_MODE')}'")
+        logger.info(f"Pydantic parsed: developer_mode={_settings.developer_mode}, debug_mode={_settings.debug_mode}")
+        logger.info(f"Final values: DEVELOPER_MODE={DEVELOPER_MODE}, debug_mode={debug_mode}")
+        logger.info(f"======================")
 except Exception as e:
     # Fallback to safe defaults if settings loading fails
     import logging
     logging.warning(f"Failed to load settings: {e}, using defaults")
-    DEVELOPER_MODE = False
-    debug_mode = False
+    # Try to read from environment directly
+    DEVELOPER_MODE = _env_developer in ("true", "1", "yes", "on")
+    debug_mode = _env_debug in ("true", "1", "yes", "on")
     _settings = None
 
 # Setup logging (only log errors in production)
