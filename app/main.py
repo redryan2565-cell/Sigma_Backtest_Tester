@@ -915,24 +915,48 @@ def main() -> None:
                     # Skip if this change came from a preset update (just processed in this run)
                     if not preset_ticker_update_this_run:
                         # This is a user-initiated change, not from preset
-                        # Check if universal preset is loaded and ticker doesn't match preset ticker
-                        if 'universal_preset_loaded' in st.session_state and st.session_state.get('universal_preset_loaded'):
-                            # Get the preset ticker to compare
-                            preset_ticker = None
-                            if 'universal_preset' in st.session_state and st.session_state.get('universal_preset'):
-                                preset_ticker = st.session_state['universal_preset'].ticker
-                            
-                            # If ticker doesn't match preset ticker, clear the preset
-                            # Keep all other parameter values (they remain in session_state)
-                            if preset_ticker and ticker.upper() != preset_ticker.upper():
-                                # Clear universal preset but keep other parameter values
+                        ticker_upper = ticker.upper()
+                        universal_preset_tickers = ['TQQQ', 'SOXL', 'QLD']
+                        
+                        # If ticker is not one of the universal preset tickers, clear preset
+                        if ticker_upper not in universal_preset_tickers:
+                            # Clear universal preset but keep other parameter values
+                            if 'universal_preset_loaded' in st.session_state:
                                 del st.session_state['universal_preset_loaded']
-                                if 'universal_preset' in st.session_state:
-                                    del st.session_state['universal_preset']
-                                # Update previous_ticker_input before rerun
-                                st.session_state['previous_ticker_input'] = ticker
-                                # Trigger rerun to update UI (preset selector will show "None")
-                                st.rerun()
+                            if 'universal_preset' in st.session_state:
+                                del st.session_state['universal_preset']
+                            # Update previous_ticker_input before rerun
+                            st.session_state['previous_ticker_input'] = ticker
+                            # Trigger rerun to update UI (preset selector will be unselected)
+                            st.rerun()
+                        else:
+                            # Ticker is one of the universal preset tickers, auto-select corresponding preset
+                            preset_name = ticker_upper
+                            # Check if preset exists (TQQQ, SOXL, QLD)
+                            if preset_name in ['TQQQ', 'SOXL', 'QLD'] and get_universal_preset:
+                                current_loaded = st.session_state.get('universal_preset_loaded', "")
+                                if preset_name != current_loaded:
+                                    universal_preset = get_universal_preset(preset_name)
+                                    if universal_preset:
+                                        # Clear user preset if universal preset is selected
+                                        if 'loaded_preset' in st.session_state:
+                                            del st.session_state['loaded_preset']
+                                        if 'loaded_preset_name' in st.session_state:
+                                            del st.session_state['loaded_preset_name']
+                                        
+                                        # Store universal preset in session_state
+                                        st.session_state['universal_preset_loaded'] = preset_name
+                                        st.session_state['universal_preset'] = universal_preset
+                                        
+                                        # Apply preset values immediately by updating session_state
+                                        st.session_state['start_date_input'] = universal_preset.start_date
+                                        st.session_state['end_date_input'] = universal_preset.end_date if universal_preset.end_date else date.today()
+                                        
+                                        # Set pending ticker update (will be applied before widget creation on next rerun)
+                                        st.session_state['pending_ticker_update'] = universal_preset.ticker
+                                        
+                                        # Trigger rerun to apply values
+                                        st.rerun()
             
             # Update previous_ticker_input after all checks (unless rerun was called)
             st.session_state['previous_ticker_input'] = ticker
@@ -1003,22 +1027,22 @@ def main() -> None:
                     if current_selection not in universal_preset_options:
                         current_selection = ""
                     
-                    # Determine index for radio button
-                    radio_index = 0  # Default to "None"
+                    # Determine index for radio button (None if no selection)
+                    radio_index = None
                     if current_selection and current_selection in universal_preset_options:
-                        radio_index = universal_preset_options.index(current_selection) + 1
+                        radio_index = universal_preset_options.index(current_selection)
                     
                     selected_universal = st.radio(
                         "Select Quick Preset",
-                        options=["None"] + universal_preset_options,
+                        options=universal_preset_options,
                         index=radio_index,
                         horizontal=True,
-                        help="범용 preset을 선택하면 모든 설정이 자동으로 채워집니다",
+                        help="범용 preset을 선택하면 모든 설정이 자동으로 채워집니다. 티커를 TQQQ/SOXL/QLD로 변경하면 자동으로 해당 preset이 선택됩니다.",
                         key="universal_preset_selector"
                     )
                     
                     # Handle universal preset selection
-                    if selected_universal and selected_universal != "None":
+                    if selected_universal:
                         # Check if this is a new selection (not already loaded)
                         current_loaded = st.session_state.get('universal_preset_loaded', "")
                         if selected_universal != current_loaded and get_universal_preset:
@@ -1043,20 +1067,13 @@ def main() -> None:
                                 
                                 # Trigger rerun to apply values
                                 st.rerun()
-                    elif selected_universal == "None" and 'universal_preset_loaded' in st.session_state and st.session_state['universal_preset_loaded']:
-                        # Clear universal preset if "None" is selected
-                        del st.session_state['universal_preset_loaded']
-                        if 'universal_preset' in st.session_state:
-                            del st.session_state['universal_preset']
-                        
-                        # Reset ticker only if it was set by universal preset (not user-modified)
-                        current_ticker = st.session_state.get('ticker_input', '')
-                        if current_ticker in ['TQQQ', 'SOXL', 'QLD'] and not st.session_state.get('user_modified_ticker', False):
-                            # Set pending ticker update (will be applied before widget creation on next rerun)
-                            st.session_state['pending_ticker_update'] = 'TQQQ'
-                        # If user modified the ticker, keep it as is
-                        
-                        st.rerun()
+                    else:
+                        # No preset selected - clear if one was loaded
+                        if 'universal_preset_loaded' in st.session_state and st.session_state.get('universal_preset_loaded'):
+                            del st.session_state['universal_preset_loaded']
+                            if 'universal_preset' in st.session_state:
+                                del st.session_state['universal_preset']
+                            st.rerun()
                     
                     # Show current universal preset status
                     if 'universal_preset_loaded' in st.session_state:
