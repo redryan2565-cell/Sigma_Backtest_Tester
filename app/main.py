@@ -1897,6 +1897,31 @@ def main() -> None:
                     hovertemplate='<b>Date:</b> %{x}<br><b>NAV:</b> $%{y:,.2f}<extra></extra>'
                 ))
 
+                # Add signal days vertical lines (gray, thin lines for trade dates)
+                try:
+                    if "BuyAmt" in daily.columns:
+                        signal_mask = daily["BuyAmt"] > 0
+                        if signal_mask.any():
+                            signal_dates = daily.index[signal_mask]
+                            nav_min = daily["NAV"].min()
+                            nav_max = daily["NAV"].max()
+                            
+                            # Add vertical line for each signal day
+                            for signal_date in signal_dates:
+                                fig.add_shape(
+                                    type="line",
+                                    x0=signal_date,
+                                    x1=signal_date,
+                                    y0=nav_min,
+                                    y1=nav_max,
+                                    line=dict(color="gray", width=1),
+                                    layer="below",  # Background layer (below TP/SL markers)
+                                    opacity=0.4
+                                )
+                except Exception:
+                    # Silently skip if there's any error (e.g., missing column, empty data)
+                    pass
+
                 # Add TP/SL markers if enabled
                 if (tp_threshold is not None or sl_threshold is not None) and "TP_triggered" in daily.columns:
                     tp_mask = daily["TP_triggered"]
@@ -1949,6 +1974,26 @@ def main() -> None:
             else:
                 fig, ax = plt.subplots(figsize=(12, 6))
                 daily["NAV"].plot(ax=ax, linewidth=2, color="steelblue")
+                
+                # Add signal days vertical lines (gray, thin lines for trade dates)
+                try:
+                    if "BuyAmt" in daily.columns:
+                        signal_mask = daily["BuyAmt"] > 0
+                        if signal_mask.any():
+                            signal_dates = daily.index[signal_mask]
+                            for signal_date in signal_dates:
+                                ax.axvline(
+                                    x=signal_date,
+                                    color='gray',
+                                    linestyle='-',
+                                    linewidth=1,
+                                    alpha=0.4,
+                                    zorder=0  # Background layer
+                                )
+                except Exception:
+                    # Silently skip if there's any error (e.g., missing column, empty data)
+                    pass
+                
                 ax.set_title(f"Net Asset Value - {ticker}", fontsize=16, fontweight="bold")
                 ax.set_xlabel("Date", fontsize=12)
                 ax.set_ylabel("NAV ($)", fontsize=12)
