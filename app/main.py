@@ -1032,20 +1032,26 @@ def main() -> None:
                     # "None" is first option (index 0), then preset options
                     radio_options = ["None"] + universal_preset_options
                     universal_preset_loaded_value = st.session_state.get('universal_preset_loaded', None)
+                    current_selector = st.session_state.get('universal_preset_selector', None)
                     
-                    # Determine what the selector should be based on universal_preset_loaded
-                    if universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
+                    # Priority: user's current selection (if valid) > universal_preset_loaded > "None"
+                    # If user just selected a preset, current_selector will have that value
+                    # We should respect that unless it conflicts with universal_preset_loaded
+                    if current_selector and current_selector in radio_options:
+                        # User has a valid selection, use it
+                        target_selector_value = current_selector
+                    elif universal_preset_loaded_value and universal_preset_loaded_value in universal_preset_options:
                         # Preset is loaded, selector should match
                         target_selector_value = universal_preset_loaded_value
+                        # Update selector to match loaded preset
+                        if current_selector != target_selector_value:
+                            st.session_state['universal_preset_selector'] = target_selector_value
                     else:
                         # No preset loaded, selector should be "None"
                         target_selector_value = "None"
-                    
-                    # Set universal_preset_selector BEFORE widget creation (this is safe and prevents warnings)
-                    # Only set if it's different from current value to avoid unnecessary updates
-                    current_selector = st.session_state.get('universal_preset_selector', None)
-                    if current_selector != target_selector_value:
-                        st.session_state['universal_preset_selector'] = target_selector_value
+                        # Update selector to "None" if it's not already
+                        if current_selector != target_selector_value:
+                            st.session_state['universal_preset_selector'] = target_selector_value
                     
                     # Calculate index based on target value
                     radio_index = radio_options.index(target_selector_value)
