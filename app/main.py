@@ -1687,6 +1687,53 @@ def main() -> None:
                 tp_hysteresis = tp_hysteresis / 100.0
                 sl_hysteresis = sl_hysteresis / 100.0
 
+            # Global Stop-Loss section (independent of TP/SL)
+            st.header("Global Stop-Loss (전역 손절)")
+            st.info("전역 손절은 개별 TP/SL보다 우선 실행되며, 발생 시 모든 포지션을 청산합니다.")
+
+            global_sl_mode = st.selectbox(
+                "Global SL Mode",
+                options=["Off", "Principal-Based (원금 기준)", "Trailing Peak (최고점 기준)"],
+                index=0,
+                help="""
+                **Off**: 전역 손절 비활성화
+                **Principal-Based**: 누적 투자금 대비 NAV 비율 기준 (예: -15% = 85% 이하)
+                **Trailing Peak**: NAV 최고점 대비 하락폭 기준 (예: 25% 하락)
+                """
+            )
+
+            global_sl_mode_value = "off"
+            if "Principal" in global_sl_mode:
+                global_sl_mode_value = "principal"
+            elif "Trailing" in global_sl_mode:
+                global_sl_mode_value = "trailing_peak"
+
+            global_sl_percent = 0.15  # Default
+            global_sl_cooldown_bars = 10  # Default
+
+            if global_sl_mode_value != "off":
+                col_gsl1, col_gsl2 = st.columns(2)
+                with col_gsl1:
+                    global_sl_percent = st.number_input(
+                        "Global SL Threshold (%)",
+                        value=15.0,
+                        min_value=1.0,
+                        max_value=50.0,
+                        step=1.0,
+                        help="손절 임계값 (예: 15 = -15% 손실 시 전량 청산)"
+                    ) / 100.0
+                with col_gsl2:
+                    global_sl_cooldown_bars = int(st.number_input(
+                        "Cooldown Bars",
+                        value=10,
+                        min_value=0,
+                        max_value=100,
+                        step=1,
+                        help="전역 손절 후 매수 금지 기간 (바 수)"
+                    ))
+            
+            # TP/SL Hysteresis & Cooldown section (only if TP or SL enabled)
+            if enable_tp or enable_sl:
                 # Cooldown options
                 st.subheader("Cooldown (Optional)")
 
@@ -1879,6 +1926,10 @@ def main() -> None:
                     sl_hysteresis=float(sl_hysteresis) / 100.0 if sl_hysteresis is not None else 0.0,
                     tp_cooldown_days=int(tp_cooldown_days) if tp_cooldown_days is not None else 0,
                     sl_cooldown_days=int(sl_cooldown_days) if sl_cooldown_days is not None else 0,
+                    # Global SL parameters
+                    global_sl_mode=global_sl_mode_value,
+                    global_sl_percent=float(global_sl_percent) if global_sl_percent is not None else 0.15,
+                    global_sl_cooldown_bars=int(global_sl_cooldown_bars) if global_sl_cooldown_bars is not None else 10,
                 )
 
                 result_v2 = run_backtest_v2(prices, params_v2)
@@ -1942,6 +1993,17 @@ def main() -> None:
             with tp_col4:
                 st.metric("Realized Loss", f"${metrics.get('total_realized_loss', metrics.get('TotalRealizedLoss', 0.0)):,.2f}")
             st.metric("Net Realized P/L", f"${metrics.get('net_realized_pnl', metrics.get('NetRealizedPnl', 0.0)):,.2f}")
+        
+        # Global SL metrics (if triggered)
+        if metrics.get('num_global_sl', 0) > 0:
+            st.subheader("🚨 Global Stop-Loss Metrics")
+            gsl_col1, gsl_col2, gsl_col3 = st.columns(3)
+            with gsl_col1:
+                st.metric("Global Stop-Losses", f"{int(metrics['num_global_sl'])}")
+            with gsl_col2:
+                st.metric("원금 기준 (Principal)", f"{int(metrics.get('global_sl_principal_count', 0))}")
+            with gsl_col3:
+                st.metric("최고점 기준 (Peak)", f"{int(metrics.get('global_sl_peak_count', 0))}")
 
         # Full metrics JSON (collapsible)
         with st.expander("📋 Full Metrics (JSON)"):

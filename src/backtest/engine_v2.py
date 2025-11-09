@@ -798,6 +798,10 @@ def compute_ledger_v2(
         cash_balance_arr=cash_balance_arr,
         equity_arr=equity_arr,
         nav_arr=nav_arr,
+        nav_peak_arr=nav_peak_arr,
+        global_sl_triggered_arr=global_sl_triggered_arr,
+        anchor_price_arr=anchor_price_arr,
+        global_sl_cooldown_arr=global_sl_cooldown_arr,
     )
     
     # Build DataFrame
@@ -866,8 +870,12 @@ def _validate_ledger_v2(
     cash_balance_arr: np.ndarray,
     equity_arr: np.ndarray,
     nav_arr: np.ndarray,
+    nav_peak_arr: np.ndarray | None = None,
+    global_sl_triggered_arr: np.ndarray | None = None,
+    anchor_price_arr: np.ndarray | None = None,
+    global_sl_cooldown_arr: np.ndarray | None = None,
 ) -> None:
-    """Validate ACB-based ledger invariants."""
+    """Validate ACB-based ledger invariants (including Global SL)."""
     n = len(qty_arr)
     
     for i in range(n):
@@ -917,6 +925,41 @@ def _validate_ledger_v2(
                 f"Bar {i}: NAV != Equity + CashBalance: "
                 f"{nav:.6f} != {expected_nav:.6f}"
             )
+        
+        # 6. NAV peak validation (if provided)
+        if nav_peak_arr is not None:
+            nav_peak = nav_peak_arr[i]
+            if nav_peak < nav and not np.isclose(nav_peak, nav, atol=1e-6):
+                raise AssertionError(
+                    f"Bar {i}: nav_peak < nav: "
+                    f"{nav_peak:.6f} < {nav:.6f}"
+                )
+        
+        # 7. Global SL trigger validation (if provided)
+        if (global_sl_triggered_arr is not None and 
+            anchor_price_arr is not None and 
+            global_sl_cooldown_arr is not None):
+            
+            if global_sl_triggered_arr[i]:
+                # After global SL trigger:
+                # - qty should be 0
+                if qty > 1e-6:
+                    raise AssertionError(
+                        f"Bar {i}: Global SL triggered but qty={qty:.6f} > 0"
+                    )
+                # - anchor_price should be 0
+                anchor = anchor_price_arr[i]
+                if anchor > 1e-6:
+                    raise AssertionError(
+                        f"Bar {i}: Global SL triggered but anchor_price={anchor:.6f} > 0"
+                    )
+                # - cooldown should be > 0 (unless it's the last bar)
+                if i < n - 1:
+                    cooldown = global_sl_cooldown_arr[i]
+                    if cooldown <= 0:
+                        raise AssertionError(
+                            f"Bar {i}: Global SL triggered but cooldown={cooldown} <= 0"
+                        )
 
 
 def run_backtest_v2(
@@ -972,6 +1015,11 @@ def run_backtest_v2(
     total_realized_gain = ledger[ledger["RealizedPnl"] > 0]["RealizedPnl"].sum()
     total_realized_loss = abs(ledger[ledger["RealizedPnl"] < 0]["RealizedPnl"].sum())
     net_realized_pnl = total_realized_gain - total_realized_loss
+    
+    # Global SL metrics
+    num_global_sl = int(ledger["GlobalSLTriggered"].sum())
+    global_sl_principal_count = int((ledger["GlobalSLReason"] == "principal").sum())
+    global_sl_peak_count = int((ledger["GlobalSLReason"] == "peak").sum())
     
     # Benchmark CAGR (Buy & Hold)
     benchmark_start_date = ledger.index[0]
@@ -1040,6 +1088,10 @@ def run_backtest_v2(
         "total_realized_gain": total_realized_gain,
         "total_realized_loss": total_realized_loss,
         "net_realized_pnl": net_realized_pnl,
+        # Global SL metrics
+        "num_global_sl": num_global_sl,
+        "global_sl_principal_count": global_sl_principal_count,
+        "global_sl_peak_count": global_sl_peak_count,
     }
     
     return {
