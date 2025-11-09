@@ -565,6 +565,15 @@ def compute_ledger_v2(
     tp_triggered_arr = np.zeros(n, dtype=bool)
     sl_triggered_arr = np.zeros(n, dtype=bool)
     
+    # Global SL arrays
+    nav_peak_arr = np.zeros(n)
+    drawdown_from_principal_arr = np.zeros(n)
+    drawdown_from_peak_arr = np.zeros(n)
+    global_sl_triggered_arr = np.zeros(n, dtype=bool)
+    global_sl_reason_arr = np.empty(n, dtype=object)
+    global_sl_reason_arr[:] = ""
+    global_sl_cooldown_arr = np.zeros(n, dtype=int)
+    
     # State arrays (for CSV export)
     qty_arr = np.zeros(n)
     avg_cost_arr = np.zeros(n)
@@ -598,23 +607,43 @@ def compute_ledger_v2(
         px_sell = px_exec_sell_arr[i]
         signal = signals_arr[i]
         
-        # Step 1: Cooldown decrement
+        # Step 1: Cooldown decrement (including global SL)
         apply_cooldown_decrement(state)
         
-        # Step 2: TP/SL triggers
-        tp_triggered, tp_shares_sold, tp_realized_pnl, tp_net_proceeds = check_and_apply_tp(
+        # Step 2: GLOBAL Stop-Loss (최우선)
+        global_sl_triggered, global_sl_reason, global_sl_realized_pnl, global_sl_net_proceeds = check_and_apply_global_sl(
             state, price, px_sell, params
         )
+        
+        # Step 3: Individual TP/SL (global SL이 트리거되지 않은 경우만)
+        tp_triggered = False
+        tp_shares_sold = 0.0
+        tp_realized_pnl = 0.0
+        tp_net_proceeds = 0.0
         
         sl_triggered = False
         sl_shares_sold = 0.0
         sl_realized_pnl = 0.0
         sl_net_proceeds = 0.0
         
-        if not tp_triggered:
-            sl_triggered, sl_shares_sold, sl_realized_pnl, sl_net_proceeds = check_and_apply_sl(
+        if not global_sl_triggered:
+            tp_triggered, tp_shares_sold, tp_realized_pnl, tp_net_proceeds = check_and_apply_tp(
                 state, price, px_sell, params
             )
+            
+            if not tp_triggered:
+                sl_triggered, sl_shares_sold, sl_realized_pnl, sl_net_proceeds = check_and_apply_sl(
+                    state, price, px_sell, params
+                )
+        
+        # Record Global SL
+        if global_sl_triggered:
+            # Global SL uses full liquidation, record in shares_sold
+            shares_sold_arr[i] = state.qty  # Already 0 after global SL, use saved value
+            sell_price_arr[i] = px_sell
+            realized_pnl_arr[i] = global_sl_realized_pnl
+            net_proceeds_arr[i] = global_sl_net_proceeds
+            cash_flow_arr[i] += global_sl_net_proceeds
         
         # Record TP/SL
         if tp_triggered:
@@ -657,6 +686,9 @@ def compute_ledger_v2(
         # Step 6: NAV calculation
         recalc_nav(state, price)
         
+        # Step 7: NAV peak update (after NAV calculation)
+        update_nav_peak(state)
+        
         # Step 7: Derived calculations
         # Portfolio return (ACB-based)
         if state.position_cost > 1e-9 and state.qty > 1e-9:
@@ -685,6 +717,17 @@ def compute_ledger_v2(
         else:
             ret_anchor_pct = np.nan
         
+        # Global SL drawdowns (for display)
+        if state.cum_invested > 1e-9:
+            dd_from_principal = ((state.nav / state.cum_invested) - 1.0) * 100.0
+        else:
+            dd_from_principal = 0.0
+        
+        if state.nav_peak > 1e-9:
+            dd_from_peak = (1.0 - (state.nav / state.nav_peak)) * 100.0
+        else:
+            dd_from_peak = 0.0
+        
         # Step 8: Store values
         qty_arr[i] = state.qty
         avg_cost_arr[i] = state.avg_cost
@@ -706,6 +749,15 @@ def compute_ledger_v2(
         profit_arr[i] = profit
         nav_including_invested_arr[i] = nav_including_invested
         nav_return_arr[i] = nav_return
+        
+        # Global SL arrays
+        nav_peak_arr[i] = state.nav_peak
+        drawdown_from_principal_arr[i] = dd_from_principal
+        drawdown_from_peak_arr[i] = dd_from_peak
+        global_sl_cooldown_arr[i] = state.global_sl_cooldown_remaining
+        if global_sl_triggered:
+            global_sl_triggered_arr[i] = True
+            global_sl_reason_arr[i] = global_sl_reason
     
     # Calculate drawdown (Portfolio Return based)
     drawdown = pd.Series(np.nan, index=idx)
@@ -793,6 +845,13 @@ def compute_ledger_v2(
         # Trigger control columns
         "TPCooldown": pd.Series(tp_cooldown_arr, index=idx),
         "SLCooldown": pd.Series(sl_cooldown_arr, index=idx),
+        # Global SL columns
+        "NAVPeak": pd.Series(nav_peak_arr, index=idx),
+        "DrawdownFromPrincipal": pd.Series(drawdown_from_principal_arr, index=idx),
+        "DrawdownFromPeak": pd.Series(drawdown_from_peak_arr, index=idx),
+        "GlobalSLTriggered": pd.Series(global_sl_triggered_arr, index=idx),
+        "GlobalSLReason": pd.Series(global_sl_reason_arr, index=idx),
+        "GlobalSLCooldown": pd.Series(global_sl_cooldown_arr, index=idx),
     }, index=idx)
     
     return ledger
