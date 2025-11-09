@@ -51,6 +51,11 @@ class BacktestParamsV2:
     tp_cooldown_days: int = 0
     sl_cooldown_days: int = 0
     
+    # Global Stop-Loss (전역 손절)
+    global_sl_mode: str = "off"  # "off", "principal", "trailing_peak"
+    global_sl_percent: float = 0.15  # e.g., 0.15 for -15%
+    global_sl_cooldown_bars: int = 10  # Cooldown after global SL trigger
+    
     def __post_init__(self):
         """Validate parameters."""
         if self.tp_mode not in ["A", "B"]:
@@ -59,6 +64,14 @@ class BacktestParamsV2:
             raise ValueError("anchor_init_mode must be 'peak' or 'entry'")
         if self.shares_per_signal <= 0:
             raise ValueError("shares_per_signal must be positive")
+        
+        # Validate Global SL parameters
+        if self.global_sl_mode not in ["off", "principal", "trailing_peak"]:
+            raise ValueError("global_sl_mode must be 'off', 'principal', or 'trailing_peak'")
+        if self.global_sl_percent < 0 or self.global_sl_percent > 1.0:
+            raise ValueError("global_sl_percent must be between 0 and 1.0")
+        if self.global_sl_cooldown_bars < 0:
+            raise ValueError("global_sl_cooldown_bars must be non-negative")
         
         # TP validation
         if self.tp_threshold is not None:
@@ -112,6 +125,11 @@ class BarState:
     tp_hysteresis_active: bool = False
     sl_hysteresis_active: bool = False
     
+    # Global Stop-Loss tracking
+    nav_peak: float = 0.0  # Peak NAV (for trailing_peak mode)
+    global_sl_cooldown_remaining: int = 0
+    global_sl_triggered_ever: bool = False  # Track if ever triggered
+    
     # Derived values (calculated each bar)
     equity: float = 0.0  # qty × price
     cash_balance: float = 0.0  # profit_cash + principal_cash
@@ -132,11 +150,112 @@ class BarState:
 
 
 def apply_cooldown_decrement(state: BarState) -> None:
-    """Decrement cooldown counters."""
+    """Decrement cooldown counters (including global SL)."""
     if state.tp_cooldown_remaining > 0:
         state.tp_cooldown_remaining -= 1
     if state.sl_cooldown_remaining > 0:
         state.sl_cooldown_remaining -= 1
+    if state.global_sl_cooldown_remaining > 0:
+        state.global_sl_cooldown_remaining -= 1
+
+
+def check_and_apply_global_sl(
+    state: BarState,
+    price: float,
+    px_exec_sell: float,
+    params: BacktestParamsV2,
+) -> tuple[bool, str, float, float]:
+    """
+    Check global stop-loss and execute if triggered.
+    
+    Returns: (triggered, reason, realized_pnl, net_proceeds)
+    reason: "principal" or "peak"
+    """
+    if params.global_sl_mode == "off":
+        return False, "", 0.0, 0.0
+    
+    if state.qty < 1e-9:
+        return False, "", 0.0, 0.0
+    
+    if state.global_sl_cooldown_remaining > 0:
+        return False, "", 0.0, 0.0
+    
+    triggered = False
+    reason = ""
+    
+    # Check Principal-Based Stop Loss
+    if params.global_sl_mode == "principal" and state.cum_invested > 1e-9:
+        nav = state.equity + (state.profit_cash + state.principal_cash)
+        drawdown_from_principal = (nav / state.cum_invested) - 1.0
+        
+        if drawdown_from_principal <= -params.global_sl_percent:
+            triggered = True
+            reason = "principal"
+    
+    # Check Trailing Peak Stop Loss
+    if params.global_sl_mode == "trailing_peak" and state.nav_peak > 1e-9:
+        nav = state.equity + (state.profit_cash + state.principal_cash)
+        drawdown_from_peak = 1.0 - (nav / state.nav_peak)
+        
+        if drawdown_from_peak >= params.global_sl_percent:
+            triggered = True
+            reason = "peak"
+    
+    if not triggered:
+        return False, "", 0.0, 0.0
+    
+    # Execute full liquidation
+    shares_to_sell = state.qty
+    gross_proceeds = state.qty * px_exec_sell
+    sell_fee = gross_proceeds * params.fee_rate
+    net_proceeds = gross_proceeds - sell_fee
+    
+    # ACB-based realized P/L
+    cost_of_shares_sold = state.avg_cost * state.qty
+    realized_pnl = net_proceeds - cost_of_shares_sold
+    
+    # Update wallet
+    if realized_pnl < 0:
+        loss = abs(realized_pnl)
+        if state.profit_cash >= loss:
+            state.profit_cash -= loss
+            state.principal_cash += cost_of_shares_sold
+        else:
+            state.principal_cash += cost_of_shares_sold - (loss - state.profit_cash)
+            state.profit_cash = 0.0
+    else:
+        state.profit_cash += realized_pnl
+        state.principal_cash += cost_of_shares_sold
+    
+    # Reset all positions
+    state.qty = 0.0
+    state.avg_cost = 0.0
+    state.position_cost = 0.0
+    state.anchor_price = 0.0
+    state.peak_price = 0.0
+    state.cum_cash_flow += net_proceeds
+    
+    # Reset individual TP/SL states
+    state.tp_cooldown_remaining = 0
+    state.sl_cooldown_remaining = 0
+    state.tp_hysteresis_active = False
+    state.sl_hysteresis_active = False
+    
+    # Set global SL cooldown
+    state.global_sl_cooldown_remaining = params.global_sl_cooldown_bars
+    state.global_sl_triggered_ever = True
+    
+    # Reset NAV peak
+    nav_after = state.profit_cash + state.principal_cash
+    state.nav_peak = nav_after
+    
+    return True, reason, realized_pnl, net_proceeds
+
+
+def update_nav_peak(state: BarState) -> None:
+    """Update NAV peak if current NAV is higher."""
+    if state.nav > state.nav_peak:
+        state.nav_peak = state.nav
 
 
 def check_and_apply_tp(
@@ -332,6 +451,10 @@ def apply_buy(
     Returns: (bought, shares_bought)
     """
     if not signal:
+        return False, 0.0
+    
+    # Check global SL cooldown (최우선)
+    if state.global_sl_cooldown_remaining > 0:
         return False, 0.0
     
     # Check same_bar_reuse

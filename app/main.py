@@ -1455,38 +1455,6 @@ def main() -> None:
             # Take-Profit / Stop-Loss section
             st.header("Take-Profit / Stop-Loss")
             
-            # TP Mode selection (New in V2)
-            st.subheader("TP Mode (Take-Profit Strategy)")
-            tp_mode = st.radio(
-                "TP Mode",
-                options=["A (Anchor - 앵커 유지형)", "B (Reset - 리셋형)"],
-                index=0,
-                help="""
-                **A 모드 (Anchor - 앵커 유지형)**:
-                - 부분익절 시 앵커 유지 → 추가 상승 시에만 재트리거
-                - 전량익절 시 앵커 리셋
-                - 장기 투자, 추세 동행 전략에 적합
-                - 거래 빈도 낮음
-                
-                **B 모드 (Reset - 리셋형)**:
-                - TP 트리거 시점에 앵커=현재가로 즉시 리셋
-                - 0% 수익률에서 다시 시작
-                - 회전율 높은 전략, 단타에 적합
-                - 거래 빈도 높음 (Hysteresis/Cooldown 필수)
-                """
-            )
-            tp_mode_value = "A" if "A" in tp_mode else "B"
-            
-            # Same-Bar Reuse option (Advanced)
-            same_bar_reuse = st.checkbox(
-                "동일바 재사용 (Same-Bar Reuse)",
-                value=False,
-                help="""
-                **Off (기본값, 권장)**: TP/SL 발생한 바에서는 매수 신호가 있어도 매수하지 않음 (보수적)
-                **On**: TP/SL 발생한 바에서도 실현된 현금을 즉시 재사용하여 매수 가능 (공격적)
-                """
-            )
-
             # Initialize values from loaded preset if available
             tp_threshold = None
             sl_threshold = None
@@ -1540,8 +1508,42 @@ def main() -> None:
                     format="%0.1f",
                     help="Trigger take-profit at this gain percentage (e.g., 30 for 30%)"
                 )
+                
+                # TP Mode selection (only when TP is enabled)
+                st.subheader("TP Mode (Take-Profit Strategy)")
+                tp_mode = st.radio(
+                    "TP Mode",
+                    options=["A (Anchor - 앵커 유지형)", "B (Reset - 리셋형)"],
+                    index=0,
+                    help="""
+                    **A 모드 (Anchor - 앵커 유지형)**:
+                    - 부분익절 시 앵커 유지 → 추가 상승 시에만 재트리거
+                    - 전량익절 시 앵커 리셋
+                    - 장기 투자, 추세 동행 전략에 적합
+                    - 거래 빈도 낮음
+                    
+                    **B 모드 (Reset - 리셋형)**:
+                    - TP 트리거 시점에 앵커=현재가로 즉시 리셋
+                    - 0% 수익률에서 다시 시작
+                    - 회전율 높은 전략, 단타에 적합
+                    - 거래 빈도 높음 (Hysteresis/Cooldown 필수)
+                    """
+                )
+                tp_mode_value = "A" if "A" in tp_mode else "B"
+                
+                # Same-Bar Reuse option (Advanced)
+                same_bar_reuse = st.checkbox(
+                    "동일바 재사용 (Same-Bar Reuse)",
+                    value=False,
+                    help="""
+                    **Off (기본값, 권장)**: TP/SL 발생한 바에서는 매수 신호가 있어도 매수하지 않음 (보수적)
+                    **On**: TP/SL 발생한 바에서도 실현된 현금을 즉시 재사용하여 매수 가능 (공격적)
+                    """
+                )
             else:
                 tp_threshold = None
+                tp_mode_value = "A"  # Default when TP disabled
+                same_bar_reuse = False  # Default when TP disabled
 
             if enable_sl:
                 sl_threshold = st.number_input(
