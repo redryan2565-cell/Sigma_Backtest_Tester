@@ -33,7 +33,7 @@ font = "sans serif"
 [ui]
 # UI settings
 hideTopBar = false
-hideSidebarNav = false
+# hideSidebarNav = false  # DEPRECATED - removed in newer Streamlit versions
 
 [client]
 # Client-side settings
@@ -43,7 +43,7 @@ toolbarMode = "minimal"
 [runner]
 # Runner settings for performance
 magicEnabled = true
-installTracer = false
+# installTracer = false  # DEPRECATED - removed in newer Streamlit versions
 fastReruns = true
 postScriptGC = true
 
